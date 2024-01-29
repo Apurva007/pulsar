@@ -30,6 +30,8 @@ import org.apache.pulsar.broker.web.AuthenticationFilter;
 import org.apache.pulsar.broker.web.JettyRequestLogFactory;
 import org.apache.pulsar.broker.web.RateLimitingFilter;
 import org.apache.pulsar.broker.web.WebExecutorThreadPool;
+import org.apache.pulsar.common.util.DefaultSslFactory;
+import org.apache.pulsar.common.util.SslFactory;
 import org.apache.pulsar.functions.worker.WorkerConfig;
 import org.apache.pulsar.functions.worker.WorkerService;
 import org.apache.pulsar.functions.worker.rest.api.v2.WorkerApiV2Resource;
@@ -153,35 +155,51 @@ public class WorkerServer {
         if (this.workerConfig.getTlsEnabled()) {
             log.info("Configuring https server on port={}", this.workerConfig.getWorkerPortTls());
             try {
-                SslContextFactory sslCtxFactory;
-                if (workerConfig.isTlsEnabledWithKeyStore()) {
-                    sslCtxFactory = JettySslContextFactory.createServerSslContextWithKeystore(
-                            workerConfig.getTlsProvider(),
-                            workerConfig.getTlsKeyStoreType(),
-                            workerConfig.getTlsKeyStore(),
-                            workerConfig.getTlsKeyStorePassword(),
-                            workerConfig.isTlsAllowInsecureConnection(),
-                            workerConfig.getTlsTrustStoreType(),
-                            workerConfig.getTlsTrustStore(),
-                            workerConfig.getTlsTrustStorePassword(),
-                            workerConfig.isTlsRequireTrustedClientCertOnConnect(),
-                            workerConfig.getWebServiceTlsCiphers(),
-                            workerConfig.getWebServiceTlsProtocols(),
-                            workerConfig.getTlsCertRefreshCheckDurationSec()
-                    );
-                } else {
-                    sslCtxFactory = JettySslContextFactory.createServerSslContext(
-                            workerConfig.getTlsProvider(),
-                            workerConfig.isTlsAllowInsecureConnection(),
-                            workerConfig.getTlsTrustCertsFilePath(),
-                            workerConfig.getTlsCertificateFilePath(),
-                            workerConfig.getTlsKeyFilePath(),
-                            workerConfig.isTlsRequireTrustedClientCertOnConnect(),
-                            workerConfig.getWebServiceTlsCiphers(),
-                            workerConfig.getWebServiceTlsProtocols(),
-                            workerConfig.getTlsCertRefreshCheckDurationSec()
-                    );
-                }
+                SslFactory sslFactory = new DefaultSslFactory(this.workerConfig.getTlsCertRefreshCheckDurationSec(),
+                        600);
+                ((DefaultSslFactory) sslFactory).configure(this.workerConfig.getTlsProvider(),
+                        this.workerConfig.getTlsKeyStoreType(), this.workerConfig.getTlsKeyStore(),
+                        this.workerConfig.getTlsKeyStorePassword(), this.workerConfig.getTlsTrustStoreType(),
+                        this.workerConfig.getTlsTrustStore(), this.workerConfig.getTlsTrustStorePassword(),
+                        this.workerConfig.getWebServiceTlsCiphers(), this.workerConfig.getWebServiceTlsProtocols(),
+                        this.workerConfig.getTlsTrustCertsFilePath(), this.workerConfig.getTlsCertificateFilePath(),
+                        this.workerConfig.getTlsKeyFilePath(), this.workerConfig.isTlsAllowInsecureConnection(),
+                        this.workerConfig.isTlsRequireTrustedClientCertOnConnect(), null,
+                        this.workerConfig.isTlsEnabledWithKeyStore());
+                SslContextFactory sslCtxFactory =
+                        JettySslContextFactory.createSslContextFactory(this.workerConfig.getTlsProvider(),
+                                sslFactory, this.workerConfig.isTlsRequireTrustedClientCertOnConnect(),
+                                this.workerConfig.getWebServiceTlsCiphers(),
+                                this.workerConfig.getWebServiceTlsProtocols());
+//                SslContextFactory sslCtxFactory;
+//                if (workerConfig.isTlsEnabledWithKeyStore()) {
+//                    sslCtxFactory = JettySslContextFactory.createServerSslContextWithKeystore(
+//                            workerConfig.getTlsProvider(),
+//                            workerConfig.getTlsKeyStoreType(),
+//                            workerConfig.getTlsKeyStore(),
+//                            workerConfig.getTlsKeyStorePassword(),
+//                            workerConfig.isTlsAllowInsecureConnection(),
+//                            workerConfig.getTlsTrustStoreType(),
+//                            workerConfig.getTlsTrustStore(),
+//                            workerConfig.getTlsTrustStorePassword(),
+//                            workerConfig.isTlsRequireTrustedClientCertOnConnect(),
+//                            workerConfig.getWebServiceTlsCiphers(),
+//                            workerConfig.getWebServiceTlsProtocols(),
+//                            workerConfig.getTlsCertRefreshCheckDurationSec()
+//                    );
+//                } else {
+//                    sslCtxFactory = JettySslContextFactory.createServerSslContext(
+//                            workerConfig.getTlsProvider(),
+//                            workerConfig.isTlsAllowInsecureConnection(),
+//                            workerConfig.getTlsTrustCertsFilePath(),
+//                            workerConfig.getTlsCertificateFilePath(),
+//                            workerConfig.getTlsKeyFilePath(),
+//                            workerConfig.isTlsRequireTrustedClientCertOnConnect(),
+//                            workerConfig.getWebServiceTlsCiphers(),
+//                            workerConfig.getWebServiceTlsProtocols(),
+//                            workerConfig.getTlsCertRefreshCheckDurationSec()
+//                    );
+//                }
                 List<ConnectionFactory> connectionFactories = new ArrayList<>();
                 if (workerConfig.isWebServiceHaProxyProtocolEnabled()) {
                     connectionFactories.add(new ProxyConnectionFactory());

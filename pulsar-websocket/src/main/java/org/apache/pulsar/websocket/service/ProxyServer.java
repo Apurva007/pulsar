@@ -34,6 +34,8 @@ import org.apache.pulsar.broker.web.JettyRequestLogFactory;
 import org.apache.pulsar.broker.web.JsonMapperProvider;
 import org.apache.pulsar.broker.web.WebExecutorThreadPool;
 import org.apache.pulsar.client.api.PulsarClientException;
+import org.apache.pulsar.common.util.DefaultSslFactory;
+import org.apache.pulsar.common.util.SslFactory;
 import org.apache.pulsar.jetty.tls.JettySslContextFactory;
 import org.eclipse.jetty.server.ConnectionFactory;
 import org.eclipse.jetty.server.ConnectionLimit;
@@ -102,34 +104,46 @@ public class ProxyServer {
         // TLS enabled connector
         if (config.getWebServicePortTls().isPresent()) {
             try {
-                SslContextFactory sslCtxFactory;
-                if (config.isTlsEnabledWithKeyStore()) {
-                    sslCtxFactory = JettySslContextFactory.createServerSslContextWithKeystore(
-                            config.getTlsProvider(),
-                            config.getTlsKeyStoreType(),
-                            config.getTlsKeyStore(),
-                            config.getTlsKeyStorePassword(),
-                            config.isTlsAllowInsecureConnection(),
-                            config.getTlsTrustStoreType(),
-                            config.getTlsTrustStore(),
-                            config.getTlsTrustStorePassword(),
-                            config.isTlsRequireTrustedClientCertOnConnect(),
-                            config.getWebServiceTlsCiphers(),
-                            config.getWebServiceTlsProtocols(),
-                            config.getTlsCertRefreshCheckDurationSec()
-                    );
-                } else {
-                    sslCtxFactory = JettySslContextFactory.createServerSslContext(
-                            config.getTlsProvider(),
-                            config.isTlsAllowInsecureConnection(),
-                            config.getTlsTrustCertsFilePath(),
-                            config.getTlsCertificateFilePath(),
-                            config.getTlsKeyFilePath(),
-                            config.isTlsRequireTrustedClientCertOnConnect(),
-                            config.getWebServiceTlsCiphers(),
-                            config.getWebServiceTlsProtocols(),
-                            config.getTlsCertRefreshCheckDurationSec());
-                }
+                SslFactory sslFactory = new DefaultSslFactory(config.getTlsCertRefreshCheckDurationSec(), 600);
+                ((DefaultSslFactory) sslFactory).configure(config.getTlsProvider(),
+                        config.getTlsKeyStoreType(), config.getTlsKeyStore(), config.getTlsKeyStorePassword(),
+                        config.getTlsTrustStoreType(), config.getTlsTrustStore(), config.getTlsTrustStorePassword(),
+                        config.getWebServiceTlsCiphers(), config.getWebServiceTlsProtocols(),
+                        config.getTlsTrustCertsFilePath(), config.getTlsCertificateFilePath(),
+                        config.getTlsKeyFilePath(), config.isTlsAllowInsecureConnection(),
+                        config.isTlsRequireTrustedClientCertOnConnect(), null,
+                        config.isTlsEnabledWithKeyStore());
+                SslContextFactory sslCtxFactory =
+                        JettySslContextFactory.createSslContextFactory(config.getTlsProvider(),
+                                sslFactory, config.isTlsRequireTrustedClientCertOnConnect(),
+                                config.getWebServiceTlsCiphers(), config.getWebServiceTlsProtocols());
+//                if (config.isTlsEnabledWithKeyStore()) {
+//                    sslCtxFactory = JettySslContextFactory.createServerSslContextWithKeystore(
+//                            config.getTlsProvider(),
+//                            config.getTlsKeyStoreType(),
+//                            config.getTlsKeyStore(),
+//                            config.getTlsKeyStorePassword(),
+//                            config.isTlsAllowInsecureConnection(),
+//                            config.getTlsTrustStoreType(),
+//                            config.getTlsTrustStore(),
+//                            config.getTlsTrustStorePassword(),
+//                            config.isTlsRequireTrustedClientCertOnConnect(),
+//                            config.getWebServiceTlsCiphers(),
+//                            config.getWebServiceTlsProtocols(),
+//                            config.getTlsCertRefreshCheckDurationSec()
+//                    );
+//                } else {
+//                    sslCtxFactory = JettySslContextFactory.createServerSslContext(
+//                            config.getTlsProvider(),
+//                            config.isTlsAllowInsecureConnection(),
+//                            config.getTlsTrustCertsFilePath(),
+//                            config.getTlsCertificateFilePath(),
+//                            config.getTlsKeyFilePath(),
+//                            config.isTlsRequireTrustedClientCertOnConnect(),
+//                            config.getWebServiceTlsCiphers(),
+//                            config.getWebServiceTlsProtocols(),
+//                            config.getTlsCertRefreshCheckDurationSec());
+//                }
                 List<ConnectionFactory> connectionFactories = new ArrayList<>();
                 if (config.isWebServiceHaProxyProtocolEnabled()) {
                     connectionFactories.add(new ProxyConnectionFactory());

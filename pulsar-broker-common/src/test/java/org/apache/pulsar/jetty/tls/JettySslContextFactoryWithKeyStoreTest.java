@@ -43,6 +43,8 @@ import org.apache.http.impl.client.HttpClients;
 import org.apache.http.impl.conn.PoolingHttpClientConnectionManager;
 import org.apache.logging.log4j.Level;
 import org.apache.logging.log4j.core.config.Configurator;
+import org.apache.pulsar.common.util.DefaultSslFactory;
+import org.apache.pulsar.common.util.SslFactory;
 import org.eclipse.jetty.server.Server;
 import org.eclipse.jetty.server.ServerConnector;
 import org.eclipse.jetty.util.ssl.SslContextFactory;
@@ -66,10 +68,17 @@ public class JettySslContextFactoryWithKeyStoreTest {
         @Cleanup("stop")
         Server server = new Server();
         List<ServerConnector> connectors = new ArrayList<>();
-        SslContextFactory.Server factory = JettySslContextFactory.createServerSslContextWithKeystore(null,
-                keyStoreType, brokerKeyStorePath, keyStorePassword, false, keyStoreType,
-                clientTrustStorePath, keyStorePassword, true, null,
-                null, 600);
+        SslFactory sslFactory = new DefaultSslFactory(600, 600);
+        ((DefaultSslFactory) sslFactory).configure(null, keyStoreType, brokerKeyStorePath,
+                keyStorePassword, keyStoreType, clientTrustStorePath, keyStorePassword, null, null,
+                null, null, null, false, true,
+                null, true);
+//        SslContextFactory.Server factory = JettySslContextFactory.createServerSslContextWithKeystore(null,
+//                keyStoreType, brokerKeyStorePath, keyStorePassword, false, keyStoreType,
+//                clientTrustStorePath, keyStorePassword, true, null,
+//                null, 600);
+        SslContextFactory.Server factory = JettySslContextFactory.createSslContextFactory(null,
+                sslFactory, true, null, null);
         factory.setHostnameVerifier((s, sslSession) -> true);
         ServerConnector connector = new ServerConnector(server, factory);
         connector.setPort(0);
@@ -95,14 +104,23 @@ public class JettySslContextFactoryWithKeyStoreTest {
         @Cleanup("stop")
         Server server = new Server();
         List<ServerConnector> connectors = new ArrayList<>();
-        SslContextFactory.Server factory = JettySslContextFactory.createServerSslContextWithKeystore(null,
-                keyStoreType, brokerKeyStorePath, keyStorePassword, false, keyStoreType, clientTrustStorePath,
-                keyStorePassword, true, null,
+        SslFactory sslFactory = new DefaultSslFactory(600, 600);
+        ((DefaultSslFactory) sslFactory).configure(null, keyStoreType, brokerKeyStorePath,
+                keyStorePassword, keyStoreType, clientTrustStorePath, keyStorePassword, null,
                 new HashSet<String>() {
                     {
                         this.add("TLSv1.3");
                     }
-                }, 600);
+                },
+                null, null, null, false, true,
+                null, true);
+        SslContextFactory.Server factory = JettySslContextFactory.createSslContextFactory(null,
+                sslFactory, true, null,
+                new HashSet<String>() {
+                    {
+                        this.add("TLSv1.3");
+                    }
+                });
         factory.setHostnameVerifier((s, sslSession) -> true);
         ServerConnector connector = new ServerConnector(server, factory);
         connector.setPort(0);
@@ -127,18 +145,33 @@ public class JettySslContextFactoryWithKeyStoreTest {
         @Cleanup("stop")
         Server server = new Server();
         List<ServerConnector> connectors = new ArrayList<>();
-        SslContextFactory.Server factory = JettySslContextFactory.createServerSslContextWithKeystore(null,
-                keyStoreType, brokerKeyStorePath, keyStorePassword, false, keyStoreType, clientTrustStorePath,
-                keyStorePassword, true, new HashSet<String>() {
+        SslFactory sslFactory = new DefaultSslFactory(600, 600);
+        ((DefaultSslFactory) sslFactory).configure(null, keyStoreType, brokerKeyStorePath,
+                keyStorePassword, keyStoreType, clientTrustStorePath, keyStorePassword,
+                new HashSet<String>() {
                     {
                         this.add("TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256");
                     }
                 },
                 new HashSet<String>() {
                     {
-                        this.add("TLSv1.2");
+                        this.add("TLSv1.3");
                     }
-                }, 600);
+                },
+                null, null, null, false, true,
+                null, true);
+        SslContextFactory.Server factory = JettySslContextFactory.createSslContextFactory(null,
+                sslFactory, true,
+                new HashSet<String>() {
+                    {
+                        this.add("TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256");
+                    }
+                },
+                new HashSet<String>() {
+                    {
+                        this.add("TLSv1.3");
+                    }
+                });
         factory.setHostnameVerifier((s, sslSession) -> true);
         ServerConnector connector = new ServerConnector(server, factory);
         connector.setPort(0);

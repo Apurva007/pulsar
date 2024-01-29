@@ -40,15 +40,14 @@ import io.netty.handler.codec.haproxy.HAProxyMessage;
 import io.netty.handler.codec.haproxy.HAProxyProtocolVersion;
 import io.netty.handler.codec.haproxy.HAProxyProxiedProtocol;
 import io.netty.handler.flush.FlushConsolidationHandler;
-import io.netty.handler.ssl.SslContext;
 import io.netty.handler.ssl.SslHandler;
-import io.netty.handler.ssl.SslProvider;
 import io.netty.handler.timeout.ReadTimeoutHandler;
 import io.netty.util.CharsetUtil;
 import java.net.InetSocketAddress;
 import java.util.Arrays;
 import java.util.concurrent.TimeUnit;
 import lombok.Getter;
+import lombok.SneakyThrows;
 import org.apache.pulsar.PulsarVersion;
 import org.apache.pulsar.client.api.Authentication;
 import org.apache.pulsar.client.api.AuthenticationDataProvider;
@@ -61,10 +60,9 @@ import org.apache.pulsar.common.api.proto.CommandConnected;
 import org.apache.pulsar.common.protocol.Commands;
 import org.apache.pulsar.common.protocol.PulsarDecoder;
 import org.apache.pulsar.common.stats.Rate;
-import org.apache.pulsar.common.util.NettyClientSslContextRefresher;
+import org.apache.pulsar.common.util.DefaultSslFactory;
 import org.apache.pulsar.common.util.SecurityUtility;
-import org.apache.pulsar.common.util.SslContextAutoRefreshBuilder;
-import org.apache.pulsar.common.util.keystoretls.NettySSLContextAutoRefreshBuilder;
+import org.apache.pulsar.common.util.SslFactory;
 import org.apache.pulsar.common.util.netty.NettyChannelUtil;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -91,9 +89,12 @@ public class DirectProxyHandler {
     private final boolean tlsHostnameVerificationEnabled;
     private final boolean tlsEnabledWithKeyStore;
     final boolean tlsEnabledWithBroker;
-    private final SslContextAutoRefreshBuilder<SslContext> clientSslCtxRefresher;
-    private final NettySSLContextAutoRefreshBuilder clientSSLContextAutoRefreshBuilder;
+//    private final SslContextAutoRefreshBuilder<SslContext> clientSslCtxRefresher;
+//    private final NettySSLContextAutoRefreshBuilder clientSSLContextAutoRefreshBuilder;
 
+    private final SslFactory sslFactory;
+
+    @SneakyThrows
     public DirectProxyHandler(ProxyService service, ProxyConnection proxyConnection) {
         this.service = service;
         this.authentication = proxyConnection.getClientAuthentication();
@@ -120,41 +121,72 @@ public class DirectProxyHandler {
                     throw new RuntimeException(e);
                 }
             }
-
-            if (tlsEnabledWithKeyStore) {
-                clientSSLContextAutoRefreshBuilder = new NettySSLContextAutoRefreshBuilder(
-                        config.getBrokerClientSslProvider(),
-                        config.isTlsAllowInsecureConnection(),
-                        config.getBrokerClientTlsTrustStoreType(),
-                        config.getBrokerClientTlsTrustStore(),
-                        config.getBrokerClientTlsTrustStorePassword(),
+            this.sslFactory = (SslFactory) Class.forName(config.getBrokerClientSslFactoryPlugin())
+                    .getDeclaredConstructor(Long.TYPE, Long.TYPE)
+                    .newInstance(config.getTlsCertRefreshCheckDurationSec(), 1000L);
+//            this.sslFactory = new DefaultSslFactory(config.getTlsCertRefreshCheckDurationSec(), 600);
+            if (this.sslFactory instanceof DefaultSslFactory) {
+                ((DefaultSslFactory) this.sslFactory).configure(config.getBrokerClientSslProvider(),
                         config.getBrokerClientTlsKeyStoreType(),
                         config.getBrokerClientTlsKeyStore(),
                         config.getBrokerClientTlsKeyStorePassword(),
+                        config.getBrokerClientTlsTrustStoreType(),
+                        config.getBrokerClientTlsTrustStore(),
+                        config.getBrokerClientTlsTrustStorePassword(),
                         config.getBrokerClientTlsCiphers(),
                         config.getBrokerClientTlsProtocols(),
-                        config.getTlsCertRefreshCheckDurationSec(),
-                        authData);
-                clientSslCtxRefresher = null;
-            } else {
-                SslProvider sslProvider = null;
-                if (config.getBrokerClientSslProvider() != null) {
-                    sslProvider = SslProvider.valueOf(config.getBrokerClientSslProvider());
-                }
-                clientSslCtxRefresher = new NettyClientSslContextRefresher(
-                        sslProvider,
-                        config.isTlsAllowInsecureConnection(),
                         config.getBrokerClientTrustCertsFilePath(),
+                        config.getBrokerClientCertificateFilePath(),
+                        config.getBrokerClientKeyFilePath(),
+                        config.isTlsAllowInsecureConnection(),
+                        false,
                         authData,
+                        config.isBrokerClientTlsEnabledWithKeyStore());
+            } else {
+                this.sslFactory.configure(config.getBrokerClientSslProvider(),
                         config.getBrokerClientTlsCiphers(),
                         config.getBrokerClientTlsProtocols(),
-                        config.getTlsCertRefreshCheckDurationSec()
-                );
-                clientSSLContextAutoRefreshBuilder = null;
+                        config.isTlsAllowInsecureConnection(),
+                        false,
+                        authData,
+                        config.getBrokerClientSslFactoryPluginParams());
             }
+//
+//            if (tlsEnabledWithKeyStore) {
+//                clientSSLContextAutoRefreshBuilder = new NettySSLContextAutoRefreshBuilder(
+//                        config.getBrokerClientSslProvider(),
+//                        config.isTlsAllowInsecureConnection(),
+//                        config.getBrokerClientTlsTrustStoreType(),
+//                        config.getBrokerClientTlsTrustStore(),
+//                        config.getBrokerClientTlsTrustStorePassword(),
+//                        config.getBrokerClientTlsKeyStoreType(),
+//                        config.getBrokerClientTlsKeyStore(),
+//                        config.getBrokerClientTlsKeyStorePassword(),
+//                        config.getBrokerClientTlsCiphers(),
+//                        config.getBrokerClientTlsProtocols(),
+//                        config.getTlsCertRefreshCheckDurationSec(),
+//                        authData);
+//                clientSslCtxRefresher = null;
+//            } else {
+//                SslProvider sslProvider = null;
+//                if (config.getBrokerClientSslProvider() != null) {
+//                    sslProvider = SslProvider.valueOf(config.getBrokerClientSslProvider());
+//                }
+//                clientSslCtxRefresher = new NettyClientSslContextRefresher(
+//                        sslProvider,
+//                        config.isTlsAllowInsecureConnection(),
+//                        config.getBrokerClientTrustCertsFilePath(),
+//                        authData,
+//                        config.getBrokerClientTlsCiphers(),
+//                        config.getBrokerClientTlsProtocols(),
+//                        config.getTlsCertRefreshCheckDurationSec()
+//                );
+//                clientSSLContextAutoRefreshBuilder = null;
+//            }
         } else {
-            clientSSLContextAutoRefreshBuilder = null;
-            clientSslCtxRefresher = null;
+//            clientSSLContextAutoRefreshBuilder = null;
+//            clientSslCtxRefresher = null;
+            this.sslFactory = null;
         }
     }
 
@@ -195,9 +227,10 @@ public class DirectProxyHandler {
                 if (tlsEnabledWithBroker) {
                     String host = targetBrokerAddress.getHostString();
                     int port = targetBrokerAddress.getPort();
-                    SslHandler handler = tlsEnabledWithKeyStore
-                            ? new SslHandler(clientSSLContextAutoRefreshBuilder.get().createSSLEngine(host, port))
-                            : clientSslCtxRefresher.get().newHandler(ch.alloc(), host, port);
+//                    SslHandler handler = tlsEnabledWithKeyStore
+//                            ? new SslHandler(clientSSLContextAutoRefreshBuilder.get().createSSLEngine(host, port))
+//                            : clientSslCtxRefresher.get().newHandler(ch.alloc(), host, port);
+                    SslHandler handler = new SslHandler(sslFactory.getClientSslEngine(host, port));
                     if (tlsHostnameVerificationEnabled) {
                         SecurityUtility.configureSSLHandler(handler);
                     }

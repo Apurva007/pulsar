@@ -37,7 +37,9 @@ import org.apache.http.impl.client.CloseableHttpClient;
 import org.apache.http.impl.client.HttpClientBuilder;
 import org.apache.http.impl.client.HttpClients;
 import org.apache.http.impl.conn.PoolingHttpClientConnectionManager;
+import org.apache.pulsar.common.util.DefaultSslFactory;
 import org.apache.pulsar.common.util.SecurityUtility;
+import org.apache.pulsar.common.util.SslFactory;
 import org.eclipse.jetty.server.Server;
 import org.eclipse.jetty.server.ServerConnector;
 import org.eclipse.jetty.util.ssl.SslContextFactory;
@@ -51,16 +53,36 @@ public class JettySslContextFactoryTest {
         @Cleanup("stop")
         Server server = new Server();
         List<ServerConnector> connectors = new ArrayList<>();
-        SslContextFactory factory = JettySslContextFactory.createServerSslContext(
+        SslFactory sslFactory = new DefaultSslFactory(600, 600);
+        ((DefaultSslFactory) sslFactory).configure(null,
                 null,
-                false,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
                 Resources.getResource("ssl/my-ca/ca.pem").getPath(),
                 Resources.getResource("ssl/my-ca/server-ca.pem").getPath(),
                 Resources.getResource("ssl/my-ca/server-key.pem").getPath(),
+                false,
                 true,
                 null,
-                null,
-                600);
+                false
+                );
+        SslContextFactory factory = JettySslContextFactory.createSslContextFactory(null,
+                sslFactory, true, null, null);
+//        SslContextFactory factory = JettySslContextFactory.createServerSslContext(
+//                null,
+//                false,
+//                Resources.getResource("ssl/my-ca/ca.pem").getPath(),
+//                Resources.getResource("ssl/my-ca/server-ca.pem").getPath(),
+//                Resources.getResource("ssl/my-ca/server-key.pem").getPath(),
+//                true,
+//                null,
+//                null,
+//                600);
 
         ServerConnector connector = new ServerConnector(server, factory);
         connector.setPort(0);
@@ -85,20 +107,49 @@ public class JettySslContextFactoryTest {
         @Cleanup("stop")
         Server server = new Server();
         List<ServerConnector> connectors = new ArrayList<>();
-        SslContextFactory factory = JettySslContextFactory.createServerSslContext(
+        SslFactory sslFactory = new DefaultSslFactory(600, 600);
+        ((DefaultSslFactory) sslFactory).configure(null,
                 null,
-                false,
-                Resources.getResource("ssl/my-ca/ca.pem").getPath(),
-                Resources.getResource("ssl/my-ca/server-ca.pem").getPath(),
-                Resources.getResource("ssl/my-ca/server-key.pem").getPath(),
-                true,
+                null,
+                null,
+                null,
+                null,
+                null,
                 null,
                 new HashSet<String>() {
                     {
                         this.add("TLSv1.3");
                     }
                 },
-                600);
+                Resources.getResource("ssl/my-ca/ca.pem").getPath(),
+                Resources.getResource("ssl/my-ca/server-ca.pem").getPath(),
+                Resources.getResource("ssl/my-ca/server-key.pem").getPath(),
+                false,
+                true,
+                null,
+                false
+        );
+        SslContextFactory factory = JettySslContextFactory.createSslContextFactory(null,
+                sslFactory, true, null,
+                new HashSet<String>() {
+                    {
+                        this.add("TLSv1.3");
+                    }
+                });
+//        SslContextFactory factory = JettySslContextFactory.createServerSslContext(
+//                null,
+//                false,
+//                Resources.getResource("ssl/my-ca/ca.pem").getPath(),
+//                Resources.getResource("ssl/my-ca/server-ca.pem").getPath(),
+//                Resources.getResource("ssl/my-ca/server-key.pem").getPath(),
+//                true,
+//                null,
+//                new HashSet<String>() {
+//                    {
+//                        this.add("TLSv1.3");
+//                    }
+//                },
+//                600);
         factory.setHostnameVerifier((s, sslSession) -> true);
         ServerConnector connector = new ServerConnector(server, factory);
         connector.setPort(0);
@@ -123,13 +174,14 @@ public class JettySslContextFactoryTest {
         @Cleanup("stop")
         Server server = new Server();
         List<ServerConnector> connectors = new ArrayList<>();
-        SslContextFactory factory = JettySslContextFactory.createServerSslContext(
+        SslFactory sslFactory = new DefaultSslFactory(600, 600);
+        ((DefaultSslFactory) sslFactory).configure(null,
                 null,
-                false,
-                Resources.getResource("ssl/my-ca/ca.pem").getPath(),
-                Resources.getResource("ssl/my-ca/server-ca.pem").getPath(),
-                Resources.getResource("ssl/my-ca/server-key.pem").getPath(),
-                true,
+                null,
+                null,
+                null,
+                null,
+                null,
                 new HashSet<String>() {
                     {
                         this.add("TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256");
@@ -137,10 +189,47 @@ public class JettySslContextFactoryTest {
                 },
                 new HashSet<String>() {
                     {
-                        this.add("TLSv1.2");
+                        this.add("TLSv1.3");
                     }
                 },
-                600);
+                Resources.getResource("ssl/my-ca/ca.pem").getPath(),
+                Resources.getResource("ssl/my-ca/server-ca.pem").getPath(),
+                Resources.getResource("ssl/my-ca/server-key.pem").getPath(),
+                false,
+                true,
+                null,
+                false
+        );
+        SslContextFactory factory = JettySslContextFactory.createSslContextFactory(null,
+                sslFactory, true,
+                new HashSet<String>() {
+                    {
+                        this.add("TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256");
+                    }
+                },
+                new HashSet<String>() {
+                    {
+                        this.add("TLSv1.3");
+                    }
+                });
+//        SslContextFactory factory = JettySslContextFactory.createServerSslContext(
+//                null,
+//                false,
+//                Resources.getResource("ssl/my-ca/ca.pem").getPath(),
+//                Resources.getResource("ssl/my-ca/server-ca.pem").getPath(),
+//                Resources.getResource("ssl/my-ca/server-key.pem").getPath(),
+//                true,
+//                new HashSet<String>() {
+//                    {
+//                        this.add("TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256");
+//                    }
+//                },
+//                new HashSet<String>() {
+//                    {
+//                        this.add("TLSv1.2");
+//                    }
+//                },
+//                600);
 
         factory.setHostnameVerifier((s, sslSession) -> true);
         ServerConnector connector = new ServerConnector(server, factory);

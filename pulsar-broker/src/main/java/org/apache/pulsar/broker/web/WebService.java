@@ -30,6 +30,8 @@ import lombok.Getter;
 import org.apache.pulsar.broker.PulsarServerException;
 import org.apache.pulsar.broker.PulsarService;
 import org.apache.pulsar.broker.ServiceConfiguration;
+import org.apache.pulsar.common.util.DefaultSslFactory;
+import org.apache.pulsar.common.util.SslFactory;
 import org.apache.pulsar.jetty.tls.JettySslContextFactory;
 import org.eclipse.jetty.server.ConnectionFactory;
 import org.eclipse.jetty.server.ConnectionLimit;
@@ -84,6 +86,7 @@ public class WebService implements AutoCloseable {
     private final ServerConnector httpsConnector;
     private final FilterInitializer filterInitializer;
     private JettyStatisticsCollector jettyStatisticsCollector;
+    private SslFactory sslFactory;
 
     @Getter
     private static final DynamicSkipUnknownPropertyHandler sharedUnknownPropertyHandler =
@@ -135,34 +138,69 @@ public class WebService implements AutoCloseable {
         Optional<Integer> tlsPort = config.getWebServicePortTls();
         if (tlsPort.isPresent()) {
             try {
-                SslContextFactory sslCtxFactory;
-                if (config.isTlsEnabledWithKeyStore()) {
-                    sslCtxFactory = JettySslContextFactory.createServerSslContextWithKeystore(
+                this.sslFactory = (SslFactory) Class.forName(config.getSslFactoryPlugin())
+                        .getDeclaredConstructor(Long.TYPE, Long.TYPE)
+                        .newInstance(config.getTlsCertRefreshCheckDurationSec(), 1000L);
+//                this.sslFactory = new DefaultSslFactory(config.getTlsCertRefreshCheckDurationSec(), 1000L);
+                if(this.sslFactory instanceof DefaultSslFactory) {
+                    ((DefaultSslFactory) this.sslFactory).configure(config.getTlsProvider(),
                             config.getWebServiceTlsProvider(),
-                            config.getTlsKeyStoreType(),
                             config.getTlsKeyStore(),
                             config.getTlsKeyStorePassword(),
-                            config.isTlsAllowInsecureConnection(),
                             config.getTlsTrustStoreType(),
                             config.getTlsTrustStore(),
                             config.getTlsTrustStorePassword(),
-                            config.isTlsRequireTrustedClientCertOnConnect(),
                             config.getWebServiceTlsCiphers(),
                             config.getWebServiceTlsProtocols(),
-                            config.getTlsCertRefreshCheckDurationSec()
-                    );
-                } else {
-                    sslCtxFactory = JettySslContextFactory.createServerSslContext(
-                            config.getWebServiceTlsProvider(),
-                            config.isTlsAllowInsecureConnection(),
                             config.getTlsTrustCertsFilePath(),
                             config.getTlsCertificateFilePath(),
                             config.getTlsKeyFilePath(),
+                            config.isTlsAllowInsecureConnection(),
                             config.isTlsRequireTrustedClientCertOnConnect(),
+                            null,
+                            config.isTlsEnabledWithKeyStore());
+                } else {
+                    this.sslFactory.configure(config.getWebServiceTlsProvider(),
                             config.getWebServiceTlsCiphers(),
                             config.getWebServiceTlsProtocols(),
-                            config.getTlsCertRefreshCheckDurationSec());
+                            config.isTlsAllowInsecureConnection(),
+                            config.isTlsRequireTrustedClientCertOnConnect(),
+                            null,
+                            config.getSslFactoryPluginParams());
                 }
+                SslContextFactory sslCtxFactory =
+                        JettySslContextFactory.createSslContextFactory(config.getWebServiceTlsProvider(),
+                                this.sslFactory, config.isTlsRequireTrustedClientCertOnConnect(),
+                                config.getTlsCiphers(), config.getTlsProtocols());
+//                SslContextFactory sslCtxFactory;
+//                if (config.isTlsEnabledWithKeyStore()) {
+//                    sslCtxFactory = JettySslContextFactory.createServerSslContextWithKeystore(
+//                            config.getWebServiceTlsProvider(),
+//                            config.getTlsKeyStoreType(),
+//                            config.getTlsKeyStore(),
+//                            config.getTlsKeyStorePassword(),
+//                            config.isTlsAllowInsecureConnection(),
+//                            config.getTlsTrustStoreType(),
+//                            config.getTlsTrustStore(),
+//                            config.getTlsTrustStorePassword(),
+//                            config.isTlsRequireTrustedClientCertOnConnect(),
+//                            config.getWebServiceTlsCiphers(),
+//                            config.getWebServiceTlsProtocols(),
+//                            config.getTlsCertRefreshCheckDurationSec()
+//                    );
+//                } else {
+//                    sslCtxFactory = JettySslContextFactory.createServerSslContext(
+//                            config.getWebServiceTlsProvider(),
+//                            config.isTlsAllowInsecureConnection(),
+//                            config.getTlsTrustCertsFilePath(),
+//                            config.getTlsCertificateFilePath(),
+//                            config.getTlsKeyFilePath(),
+//                            config.isTlsRequireTrustedClientCertOnConnect(),
+//                            config.getWebServiceTlsCiphers(),
+//                            config.getWebServiceTlsProtocols(),
+//                            config.getTlsCertRefreshCheckDurationSec());
+//                }
+                httpsConnector = new ServerConnector(server, sslCtxFactory, new HttpConnectionFactory(httpConfig));
                 List<ConnectionFactory> connectionFactories = new ArrayList<>();
                 if (config.isWebServiceHaProxyProtocolEnabled()) {
                     connectionFactories.add(new ProxyConnectionFactory());

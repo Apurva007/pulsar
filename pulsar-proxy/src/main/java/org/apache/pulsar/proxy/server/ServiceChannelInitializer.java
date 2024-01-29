@@ -22,16 +22,13 @@ import io.netty.channel.ChannelInitializer;
 import io.netty.channel.socket.SocketChannel;
 import io.netty.handler.codec.LengthFieldBasedFrameDecoder;
 import io.netty.handler.flush.FlushConsolidationHandler;
-import io.netty.handler.ssl.SslContext;
 import io.netty.handler.ssl.SslHandler;
-import io.netty.handler.ssl.SslProvider;
 import io.netty.handler.timeout.ReadTimeoutHandler;
 import java.util.concurrent.TimeUnit;
 import org.apache.pulsar.common.protocol.Commands;
 import org.apache.pulsar.common.protocol.OptionalProxyProtocolDecoder;
-import org.apache.pulsar.common.util.NettyServerSslContextBuilder;
-import org.apache.pulsar.common.util.SslContextAutoRefreshBuilder;
-import org.apache.pulsar.common.util.keystoretls.NettySSLContextAutoRefreshBuilder;
+import org.apache.pulsar.common.util.DefaultSslFactory;
+import org.apache.pulsar.common.util.SslFactory;
 
 /**
  * Initialize service channel handlers.
@@ -46,8 +43,9 @@ public class ServiceChannelInitializer extends ChannelInitializer<SocketChannel>
     private final int brokerProxyReadTimeoutMs;
     private final int maxMessageSize;
 
-    private SslContextAutoRefreshBuilder<SslContext> serverSslCtxRefresher;
-    private NettySSLContextAutoRefreshBuilder serverSSLContextAutoRefreshBuilder;
+//    private SslContextAutoRefreshBuilder<SslContext> serverSslCtxRefresher;
+//    private NettySSLContextAutoRefreshBuilder serverSSLContextAutoRefreshBuilder;
+    private final SslFactory sslFactory;
 
     public ServiceChannelInitializer(ProxyService proxyService, ProxyConfiguration serviceConfig, boolean enableTls)
             throws Exception {
@@ -59,36 +57,67 @@ public class ServiceChannelInitializer extends ChannelInitializer<SocketChannel>
         this.maxMessageSize = serviceConfig.getMaxMessageSize();
 
         if (enableTls) {
-            if (tlsEnabledWithKeyStore) {
-                serverSSLContextAutoRefreshBuilder = new NettySSLContextAutoRefreshBuilder(
-                        serviceConfig.getTlsProvider(),
+            this.sslFactory = (SslFactory) Class.forName(serviceConfig.getSslFactoryPlugin())
+                    .getDeclaredConstructor(Long.TYPE, Long.TYPE)
+                    .newInstance(serviceConfig.getTlsCertRefreshCheckDurationSec(), 1000L);
+//            this.sslFactory = new DefaultSslFactory(serviceConfig.getTlsCertRefreshCheckDurationSec(), 600);
+            if (this.sslFactory instanceof DefaultSslFactory) {
+                ((DefaultSslFactory) this.sslFactory).configure(serviceConfig.getTlsProvider(),
                         serviceConfig.getTlsKeyStoreType(),
                         serviceConfig.getTlsKeyStore(),
                         serviceConfig.getTlsKeyStorePassword(),
-                        serviceConfig.isTlsAllowInsecureConnection(),
                         serviceConfig.getTlsTrustStoreType(),
                         serviceConfig.getTlsTrustStore(),
                         serviceConfig.getTlsTrustStorePassword(),
-                        serviceConfig.isTlsRequireTrustedClientCertOnConnect(),
                         serviceConfig.getTlsCiphers(),
                         serviceConfig.getTlsProtocols(),
-                        serviceConfig.getTlsCertRefreshCheckDurationSec());
-            } else {
-                SslProvider sslProvider = null;
-                if (serviceConfig.getTlsProvider() != null) {
-                    sslProvider = SslProvider.valueOf(serviceConfig.getTlsProvider());
-                }
-                serverSslCtxRefresher = new NettyServerSslContextBuilder(
-                        sslProvider,
+                        serviceConfig.getTlsTrustCertsFilePath(),
+                        serviceConfig.getTlsCertificateFilePath(),
+                        serviceConfig.getTlsKeyFilePath(),
                         serviceConfig.isTlsAllowInsecureConnection(),
-                        serviceConfig.getTlsTrustCertsFilePath(), serviceConfig.getTlsCertificateFilePath(),
-                        serviceConfig.getTlsKeyFilePath(), serviceConfig.getTlsCiphers(),
-                        serviceConfig.getTlsProtocols(),
                         serviceConfig.isTlsRequireTrustedClientCertOnConnect(),
-                        serviceConfig.getTlsCertRefreshCheckDurationSec());
+                        null,
+                        serviceConfig.isTlsEnabledWithKeyStore());
+            } else {
+                this.sslFactory.configure(serviceConfig.getTlsProvider(),
+                        serviceConfig.getTlsCiphers(),
+                        serviceConfig.getTlsProtocols(),
+                        serviceConfig.isTlsAllowInsecureConnection(),
+                        serviceConfig.isTlsRequireTrustedClientCertOnConnect(),
+                        null,
+                        serviceConfig.getSslFactoryPluginParams());
             }
+//            if (tlsEnabledWithKeyStore) {
+//                serverSSLContextAutoRefreshBuilder = new NettySSLContextAutoRefreshBuilder(
+//                        serviceConfig.getTlsProvider(),
+//                        serviceConfig.getTlsKeyStoreType(),
+//                        serviceConfig.getTlsKeyStore(),
+//                        serviceConfig.getTlsKeyStorePassword(),
+//                        serviceConfig.isTlsAllowInsecureConnection(),
+//                        serviceConfig.getTlsTrustStoreType(),
+//                        serviceConfig.getTlsTrustStore(),
+//                        serviceConfig.getTlsTrustStorePassword(),
+//                        serviceConfig.isTlsRequireTrustedClientCertOnConnect(),
+//                        serviceConfig.getTlsCiphers(),
+//                        serviceConfig.getTlsProtocols(),
+//                        serviceConfig.getTlsCertRefreshCheckDurationSec());
+//            } else {
+//                SslProvider sslProvider = null;
+//                if (serviceConfig.getTlsProvider() != null) {
+//                    sslProvider = SslProvider.valueOf(serviceConfig.getTlsProvider());
+//                }
+//                serverSslCtxRefresher = new NettyServerSslContextBuilder(
+//                        sslProvider,
+//                        serviceConfig.isTlsAllowInsecureConnection(),
+//                        serviceConfig.getTlsTrustCertsFilePath(), serviceConfig.getTlsCertificateFilePath(),
+//                        serviceConfig.getTlsKeyFilePath(), serviceConfig.getTlsCiphers(),
+//                        serviceConfig.getTlsProtocols(),
+//                        serviceConfig.isTlsRequireTrustedClientCertOnConnect(),
+//                        serviceConfig.getTlsCertRefreshCheckDurationSec());
+//            }
         } else {
-            this.serverSslCtxRefresher = null;
+//            this.serverSslCtxRefresher = null;
+            this.sslFactory = null;
         }
     }
 
@@ -96,14 +125,17 @@ public class ServiceChannelInitializer extends ChannelInitializer<SocketChannel>
     protected void initChannel(SocketChannel ch) throws Exception {
         ch.pipeline().addLast("consolidation", new FlushConsolidationHandler(1024,
                 true));
-        if (serverSslCtxRefresher != null && this.enableTls) {
-            SslContext sslContext = serverSslCtxRefresher.get();
-            if (sslContext != null) {
-                ch.pipeline().addLast(TLS_HANDLER, sslContext.newHandler(ch.alloc()));
-            }
-        } else if (this.tlsEnabledWithKeyStore && serverSSLContextAutoRefreshBuilder != null) {
-            ch.pipeline().addLast(TLS_HANDLER,
-                    new SslHandler(serverSSLContextAutoRefreshBuilder.get().createSSLEngine()));
+//        if (serverSslCtxRefresher != null && this.enableTls) {
+//            SslContext sslContext = serverSslCtxRefresher.get();
+//            if (sslContext != null) {
+//                ch.pipeline().addLast(TLS_HANDLER, sslContext.newHandler(ch.alloc()));
+//            }
+//        } else if (this.tlsEnabledWithKeyStore && serverSSLContextAutoRefreshBuilder != null) {
+//            ch.pipeline().addLast(TLS_HANDLER,
+//                    new SslHandler(serverSSLContextAutoRefreshBuilder.get().createSSLEngine()));
+//        }
+        if (this.enableTls) {
+            ch.pipeline().addLast(TLS_HANDLER, new SslHandler(this.sslFactory.getServerSslEngine()));
         }
         if (brokerProxyReadTimeoutMs > 0) {
             ch.pipeline().addLast("readTimeoutHandler",

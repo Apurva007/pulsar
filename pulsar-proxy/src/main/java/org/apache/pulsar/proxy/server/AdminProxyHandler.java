@@ -43,7 +43,9 @@ import org.apache.pulsar.client.api.AuthenticationDataProvider;
 import org.apache.pulsar.client.api.AuthenticationFactory;
 import org.apache.pulsar.client.api.KeyStoreParams;
 import org.apache.pulsar.client.api.PulsarClientException;
+import org.apache.pulsar.common.util.DefaultSslFactory;
 import org.apache.pulsar.common.util.SecurityUtility;
+import org.apache.pulsar.common.util.SslFactory;
 import org.apache.pulsar.common.util.keystoretls.KeyStoreSSLContext;
 import org.apache.pulsar.policies.data.loadbalancer.ServiceLookupData;
 import org.eclipse.jetty.client.HttpClient;
@@ -267,44 +269,73 @@ class AdminProxyHandler extends ProxyServlet {
 
             if (config.isTlsEnabledWithBroker()) {
                 try {
-                    X509Certificate[] trustCertificates = SecurityUtility
-                        .loadCertificatesFromPemFile(config.getBrokerClientTrustCertsFilePath());
-
-                    SSLContext sslCtx;
                     AuthenticationDataProvider authData = auth.getAuthData();
-                    if (config.isBrokerClientTlsEnabledWithKeyStore()) {
-                        KeyStoreParams params = authData.hasDataForTls() ? authData.getTlsKeyStoreParams() : null;
-                        sslCtx = KeyStoreSSLContext.createClientSslContext(
-                                config.getBrokerClientSslProvider(),
-                                params != null ? params.getKeyStoreType() : null,
-                                params != null ? params.getKeyStorePath() : null,
-                                params != null ? params.getKeyStorePassword() : null,
-                                config.isTlsAllowInsecureConnection(),
-                                config.getBrokerClientTlsTrustStoreType(),
+                    SslFactory sslFactory = (SslFactory) Class.forName(config.getBrokerClientSslFactoryPlugin())
+                            .getDeclaredConstructor(Long.TYPE, Long.TYPE)
+                            .newInstance(config.getTlsCertRefreshCheckDurationSec(), 1000L);
+                    if(sslFactory instanceof DefaultSslFactory) {
+                        ((DefaultSslFactory) sslFactory).configure(config.getBrokerClientSslProvider(),
+                                config.getBrokerClientTlsKeyStoreType(), config.getBrokerClientTlsKeyStore(),
+                                config.getBrokerClientTlsKeyStorePassword(), config.getTlsTrustStoreType(),
                                 config.getBrokerClientTlsTrustStore(),
                                 config.getBrokerClientTlsTrustStorePassword(),
                                 config.getBrokerClientTlsCiphers(),
-                                config.getBrokerClientTlsProtocols());
+                                config.getBrokerClientTlsProtocols(),
+                                config.getBrokerClientTrustCertsFilePath(),
+                                config.getBrokerClientCertificateFilePath(),
+                                config.getBrokerClientKeyFilePath(),
+                                config.isTlsAllowInsecureConnection(),
+                                false,
+                                authData,
+                                config.isBrokerClientTlsEnabledWithKeyStore());
                     } else {
-                        if (authData.hasDataForTls()) {
-                            sslCtx = SecurityUtility.createSslContext(
-                                    config.isTlsAllowInsecureConnection(),
-                                    trustCertificates,
-                                    authData.getTlsCertificates(),
-                                    authData.getTlsPrivateKey(),
-                                    config.getBrokerClientSslProvider()
-                            );
-                        } else {
-                            sslCtx = SecurityUtility.createSslContext(
-                                    config.isTlsAllowInsecureConnection(),
-                                    trustCertificates,
-                                    config.getBrokerClientSslProvider()
-                            );
-                        }
+                        sslFactory.configure(config.getBrokerClientSslProvider(),
+                                config.getBrokerClientTlsCiphers(),
+                                config.getBrokerClientTlsProtocols(),
+                                config.isTlsAllowInsecureConnection(),
+                                false,
+                                authData,
+                                config.getBrokerClientSslFactoryPluginParams());
                     }
+//                    X509Certificate[] trustCertificates = SecurityUtility
+//                        .loadCertificatesFromPemFile(config.getBrokerClientTrustCertsFilePath());
+//
+//                    SSLContext sslCtx;
+//                    AuthenticationDataProvider authData = auth.getAuthData();
+//                    if (config.isBrokerClientTlsEnabledWithKeyStore()) {
+//                        KeyStoreParams params = authData.hasDataForTls() ? authData.getTlsKeyStoreParams() : null;
+//                        sslCtx = KeyStoreSSLContext.createClientSslContext(
+//                                config.getBrokerClientSslProvider(),
+//                                params != null ? params.getKeyStoreType() : null,
+//                                params != null ? params.getKeyStorePath() : null,
+//                                params != null ? params.getKeyStorePassword() : null,
+//                                config.isTlsAllowInsecureConnection(),
+//                                config.getBrokerClientTlsTrustStoreType(),
+//                                config.getBrokerClientTlsTrustStore(),
+//                                config.getBrokerClientTlsTrustStorePassword(),
+//                                config.getBrokerClientTlsCiphers(),
+//                                config.getBrokerClientTlsProtocols());
+//                    } else {
+//                        if (authData.hasDataForTls()) {
+//                            sslCtx = SecurityUtility.createSslContext(
+//                                    config.isTlsAllowInsecureConnection(),
+//                                    trustCertificates,
+//                                    authData.getTlsCertificates(),
+//                                    authData.getTlsPrivateKey(),
+//                                    config.getBrokerClientSslProvider()
+//                            );
+//                        } else {
+//                            sslCtx = SecurityUtility.createSslContext(
+//                                    config.isTlsAllowInsecureConnection(),
+//                                    trustCertificates,
+//                                    config.getBrokerClientSslProvider()
+//                            );
+//                        }
+//                    }
 
-                    SslContextFactory contextFactory = new SslContextFactory.Client();
-                    contextFactory.setSslContext(sslCtx);
+//                    SslContextFactory contextFactory = new SslContextFactory.Client();
+//                    contextFactory.setSslContext(sslCtx);
+                    SslContextFactory contextFactory = new Client(sslFactory);
                     if (!config.isTlsHostnameVerificationEnabled()) {
                         contextFactory.setEndpointIdentificationAlgorithm(null);
                     }
@@ -390,6 +421,21 @@ class AdminProxyHandler extends ProxyServlet {
         String user = (String) clientRequest.getAttribute(AuthenticationFilter.AuthenticatedRoleAttributeName);
         if (user != null) {
             proxyRequest.header(ORIGINAL_PRINCIPAL_HEADER, user);
+        }
+    }
+
+    private static class Client extends SslContextFactory.Client {
+
+        private final SslFactory sslFactory;
+
+        public Client(SslFactory sslFactory) {
+            super();
+            this.sslFactory = sslFactory;
+        }
+
+        @Override
+        public SSLContext getSslContext() {
+            return this.sslFactory.getInternalSslContext();
         }
     }
 }

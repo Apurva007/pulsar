@@ -24,9 +24,7 @@ import io.netty.channel.socket.SocketChannel;
 import io.netty.handler.codec.LengthFieldBasedFrameDecoder;
 import io.netty.handler.flow.FlowControlHandler;
 import io.netty.handler.flush.FlushConsolidationHandler;
-import io.netty.handler.ssl.SslContext;
 import io.netty.handler.ssl.SslHandler;
-import io.netty.handler.ssl.SslProvider;
 import lombok.Builder;
 import lombok.Data;
 import lombok.extern.slf4j.Slf4j;
@@ -35,9 +33,8 @@ import org.apache.pulsar.broker.ServiceConfiguration;
 import org.apache.pulsar.common.protocol.ByteBufPair;
 import org.apache.pulsar.common.protocol.Commands;
 import org.apache.pulsar.common.protocol.OptionalProxyProtocolDecoder;
-import org.apache.pulsar.common.util.NettyServerSslContextBuilder;
-import org.apache.pulsar.common.util.SslContextAutoRefreshBuilder;
-import org.apache.pulsar.common.util.keystoretls.NettySSLContextAutoRefreshBuilder;
+import org.apache.pulsar.common.util.DefaultSslFactory;
+import org.apache.pulsar.common.util.SslFactory;
 
 @Slf4j
 public class PulsarChannelInitializer extends ChannelInitializer<SocketChannel> {
@@ -47,10 +44,11 @@ public class PulsarChannelInitializer extends ChannelInitializer<SocketChannel> 
     private final PulsarService pulsar;
     private final String listenerName;
     private final boolean enableTls;
-    private final boolean tlsEnabledWithKeyStore;
-    private SslContextAutoRefreshBuilder<SslContext> sslCtxRefresher;
+//    private final boolean tlsEnabledWithKeyStore;
+//    private SslContextAutoRefreshBuilder<SslContext> sslCtxRefresher;
     private final ServiceConfiguration brokerConf;
-    private NettySSLContextAutoRefreshBuilder nettySSLContextAutoRefreshBuilder;
+//    private NettySSLContextAutoRefreshBuilder nettySSLContextAutoRefreshBuilder;
+    private SslFactory sslFactory;
 
     /**
      * @param pulsar
@@ -64,40 +62,70 @@ public class PulsarChannelInitializer extends ChannelInitializer<SocketChannel> 
         this.listenerName = opts.getListenerName();
         this.enableTls = opts.isEnableTLS();
         ServiceConfiguration serviceConfig = pulsar.getConfiguration();
-        this.tlsEnabledWithKeyStore = serviceConfig.isTlsEnabledWithKeyStore();
+//        this.tlsEnabledWithKeyStore = serviceConfig.isTlsEnabledWithKeyStore();
         if (this.enableTls) {
-            if (tlsEnabledWithKeyStore) {
-                nettySSLContextAutoRefreshBuilder = new NettySSLContextAutoRefreshBuilder(
-                        serviceConfig.getTlsProvider(),
+//            if (tlsEnabledWithKeyStore) {
+//                nettySSLContextAutoRefreshBuilder = new NettySSLContextAutoRefreshBuilder(
+//                        serviceConfig.getTlsProvider(),
+//                        serviceConfig.getTlsKeyStoreType(),
+//                        serviceConfig.getTlsKeyStore(),
+//                        serviceConfig.getTlsKeyStorePassword(),
+//                        serviceConfig.isTlsAllowInsecureConnection(),
+//                        serviceConfig.getTlsTrustStoreType(),
+//                        serviceConfig.getTlsTrustStore(),
+//                        serviceConfig.getTlsTrustStorePassword(),
+//                        serviceConfig.isTlsRequireTrustedClientCertOnConnect(),
+//                        serviceConfig.getTlsCiphers(),
+//                        serviceConfig.getTlsProtocols(),
+//                        serviceConfig.getTlsCertRefreshCheckDurationSec());
+            // Add a new config
+//                this.sslFactory = new DefaultSslFactory(serviceConfig.getTlsCertRefreshCheckDurationSec(), 1000L);
+            this.sslFactory = (SslFactory) Class.forName(serviceConfig.getSslFactoryPlugin())
+                    .getDeclaredConstructor(Long.TYPE, Long.TYPE)
+                    .newInstance(serviceConfig.getTlsCertRefreshCheckDurationSec(), 1000L);
+            if (this.sslFactory instanceof DefaultSslFactory) {
+                ((DefaultSslFactory) this.sslFactory).configure(serviceConfig.getTlsProvider(),
                         serviceConfig.getTlsKeyStoreType(),
                         serviceConfig.getTlsKeyStore(),
                         serviceConfig.getTlsKeyStorePassword(),
-                        serviceConfig.isTlsAllowInsecureConnection(),
                         serviceConfig.getTlsTrustStoreType(),
                         serviceConfig.getTlsTrustStore(),
                         serviceConfig.getTlsTrustStorePassword(),
-                        serviceConfig.isTlsRequireTrustedClientCertOnConnect(),
                         serviceConfig.getTlsCiphers(),
                         serviceConfig.getTlsProtocols(),
-                        serviceConfig.getTlsCertRefreshCheckDurationSec());
-            } else {
-                SslProvider sslProvider = null;
-                if (serviceConfig.getTlsProvider() != null) {
-                    sslProvider = SslProvider.valueOf(serviceConfig.getTlsProvider());
-                }
-                sslCtxRefresher = new NettyServerSslContextBuilder(
-                        sslProvider,
-                        serviceConfig.isTlsAllowInsecureConnection(),
                         serviceConfig.getTlsTrustCertsFilePath(),
                         serviceConfig.getTlsCertificateFilePath(),
                         serviceConfig.getTlsKeyFilePath(),
+                        serviceConfig.isTlsAllowInsecureConnection(),
+                        serviceConfig.isTlsRequireTrustedClientCertOnConnect(),
+                        null,
+                        serviceConfig.isTlsEnabledWithKeyStore());
+            } else {
+                this.sslFactory.configure(serviceConfig.getTlsProvider(),
                         serviceConfig.getTlsCiphers(),
                         serviceConfig.getTlsProtocols(),
+                        serviceConfig.isTlsAllowInsecureConnection(),
                         serviceConfig.isTlsRequireTrustedClientCertOnConnect(),
-                        serviceConfig.getTlsCertRefreshCheckDurationSec());
+                        null,
+                        serviceConfig.getSslFactoryPluginParams());
             }
-        } else {
-            this.sslCtxRefresher = null;
+
+//            } else {
+//                SslProvider sslProvider = null;
+//                if (serviceConfig.getTlsProvider() != null) {
+//                    sslProvider = SslProvider.valueOf(serviceConfig.getTlsProvider());
+//                }
+//                sslCtxRefresher = new NettyServerSslContextBuilder(
+//                        sslProvider,
+//                        serviceConfig.isTlsAllowInsecureConnection(),
+//                        serviceConfig.getTlsTrustCertsFilePath(),
+//                        serviceConfig.getTlsCertificateFilePath(),
+//                        serviceConfig.getTlsKeyFilePath(),
+//                        serviceConfig.getTlsCiphers(),
+//                        serviceConfig.getTlsProtocols(),
+//                        serviceConfig.isTlsRequireTrustedClientCertOnConnect(),
+//                        serviceConfig.getTlsCertRefreshCheckDurationSec());
+//            }
         }
         this.brokerConf = pulsar.getConfiguration();
     }
@@ -106,12 +134,14 @@ public class PulsarChannelInitializer extends ChannelInitializer<SocketChannel> 
     protected void initChannel(SocketChannel ch) throws Exception {
         ch.pipeline().addLast("consolidation", new FlushConsolidationHandler(1024, true));
         if (this.enableTls) {
-            if (this.tlsEnabledWithKeyStore) {
-                ch.pipeline().addLast(TLS_HANDLER,
-                        new SslHandler(nettySSLContextAutoRefreshBuilder.get().createSSLEngine()));
-            } else {
-                ch.pipeline().addLast(TLS_HANDLER, sslCtxRefresher.get().newHandler(ch.alloc()));
-            }
+//            if (this.tlsEnabledWithKeyStore) {
+//                ch.pipeline().addLast(TLS_HANDLER,
+//                        new SslHandler(nettySSLContextAutoRefreshBuilder.get().createSSLEngine()));
+            ch.pipeline().addLast(TLS_HANDLER, new SslHandler(this.sslFactory.getServerSslEngine()));
+//            } else {
+////                ch.pipeline().addLast(TLS_HANDLER, sslCtxRefresher.get().newHandler(ch.alloc()));
+//                ch.pipeline().addLast(TLS_HANDLER, )
+//            }
             ch.pipeline().addLast("ByteBufPairEncoder", ByteBufPair.COPYING_ENCODER);
         } else {
             ch.pipeline().addLast("ByteBufPairEncoder", ByteBufPair.ENCODER);
