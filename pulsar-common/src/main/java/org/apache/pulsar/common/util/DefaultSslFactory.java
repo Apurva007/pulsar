@@ -21,8 +21,6 @@ package org.apache.pulsar.common.util;
 import java.io.IOException;
 import java.io.InputStream;
 import java.security.GeneralSecurityException;
-import java.util.Arrays;
-import java.util.HashSet;
 import java.util.Set;
 import javax.net.ssl.SSLContext;
 import javax.net.ssl.SSLEngine;
@@ -52,7 +50,7 @@ public class DefaultSslFactory extends SslFactory {
     protected InputStream tlsTrustCertsStream;
 
     protected boolean isTlsTrustStoreStreamProvided;
-    protected static final String[] DEFAULT_SSL_ENABLED_PROTOCOLS = {"TLSv1.3", "TLSv1.2"};
+    protected final String[] defaultSslEnabledProtocols = {"TLSv1.3", "TLSv1.2"};
 
     public DefaultSslFactory(long certRefreshInSec, long timeToWaitForFirstSslContext) {
         super(certRefreshInSec, timeToWaitForFirstSslContext);
@@ -180,10 +178,10 @@ public class DefaultSslFactory extends SslFactory {
                 sslParams.setWantClientAuth(true);
             }
         }
-        if(this.tlsProtocols != null && this.tlsProtocols.size() > 0) {
+        if (this.tlsProtocols != null && this.tlsProtocols.size() > 0) {
             sslParams.setProtocols(this.tlsProtocols.toArray(new String[0]));
         } else {
-            sslParams.setProtocols(DEFAULT_SSL_ENABLED_PROTOCOLS);
+            sslParams.setProtocols(defaultSslEnabledProtocols);
         }
         if (this.tlsCiphers != null && !this.tlsCiphers.isEmpty()) {
             sslParams.setCipherSuites(this.tlsCiphers.toArray(new String[0]));

@@ -24,7 +24,6 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.net.URI;
 import java.nio.ByteBuffer;
-import java.security.cert.X509Certificate;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashSet;
@@ -41,12 +40,9 @@ import org.apache.pulsar.broker.web.AuthenticationFilter;
 import org.apache.pulsar.client.api.Authentication;
 import org.apache.pulsar.client.api.AuthenticationDataProvider;
 import org.apache.pulsar.client.api.AuthenticationFactory;
-import org.apache.pulsar.client.api.KeyStoreParams;
 import org.apache.pulsar.client.api.PulsarClientException;
 import org.apache.pulsar.common.util.DefaultSslFactory;
-import org.apache.pulsar.common.util.SecurityUtility;
 import org.apache.pulsar.common.util.SslFactory;
-import org.apache.pulsar.common.util.keystoretls.KeyStoreSSLContext;
 import org.apache.pulsar.policies.data.loadbalancer.ServiceLookupData;
 import org.eclipse.jetty.client.HttpClient;
 import org.eclipse.jetty.client.HttpRequest;
@@ -273,7 +269,7 @@ class AdminProxyHandler extends ProxyServlet {
                     SslFactory sslFactory = (SslFactory) Class.forName(config.getBrokerClientSslFactoryPlugin())
                             .getDeclaredConstructor(Long.TYPE, Long.TYPE)
                             .newInstance(config.getTlsCertRefreshCheckDurationSec(), 1000L);
-                    if(sslFactory instanceof DefaultSslFactory) {
+                    if (sslFactory instanceof DefaultSslFactory) {
                         ((DefaultSslFactory) sslFactory).configure(config.getBrokerClientSslProvider(),
                                 config.getBrokerClientTlsKeyStoreType(), config.getBrokerClientTlsKeyStore(),
                                 config.getBrokerClientTlsKeyStorePassword(), config.getTlsTrustStoreType(),

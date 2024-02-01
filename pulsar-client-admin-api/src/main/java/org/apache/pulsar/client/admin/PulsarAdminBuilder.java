@@ -291,7 +291,7 @@ public interface PulsarAdminBuilder {
     PulsarAdminBuilder tlsProtocols(Set<String> tlsProtocols);
 
     /**
-     * SSL Factory Plugin used to generate the SSL Context and SSLEngine
+     * SSL Factory Plugin used to generate the SSL Context and SSLEngine.
      * @param sslFactoryPlugin Name of the SSL Factory Class to be used.
      * @return PulsarAdminBuilder
      */

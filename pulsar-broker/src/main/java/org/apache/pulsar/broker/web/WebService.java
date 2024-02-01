@@ -142,7 +142,7 @@ public class WebService implements AutoCloseable {
                         .getDeclaredConstructor(Long.TYPE, Long.TYPE)
                         .newInstance(config.getTlsCertRefreshCheckDurationSec(), 1000L);
 //                this.sslFactory = new DefaultSslFactory(config.getTlsCertRefreshCheckDurationSec(), 1000L);
-                if(this.sslFactory instanceof DefaultSslFactory) {
+                if (this.sslFactory instanceof DefaultSslFactory) {
                     ((DefaultSslFactory) this.sslFactory).configure(config.getTlsProvider(),
                             config.getWebServiceTlsProvider(),
                             config.getTlsKeyStore(),
