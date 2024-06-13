@@ -21,11 +21,14 @@ package org.apache.pulsar.common.util;
 import java.io.IOException;
 import java.io.InputStream;
 import java.security.GeneralSecurityException;
+import java.security.PrivateKey;
+import java.security.cert.Certificate;
 import java.util.concurrent.atomic.AtomicReference;
 import javax.net.ssl.SSLContext;
 import javax.net.ssl.SSLEngine;
 import javax.net.ssl.SSLParameters;
 import org.apache.pulsar.client.api.AuthenticationDataProvider;
+import org.apache.pulsar.client.api.KeyStoreParams;
 import org.apache.pulsar.common.util.keystoretls.KeyStoreSSLContext;
 
 public class DefaultPulsarSslFactory implements PulsarSslFactory {
@@ -38,25 +41,49 @@ public class DefaultPulsarSslFactory implements PulsarSslFactory {
     protected FileModifiedTimeUpdater tlsTrustCertsFilePath;
     protected FileModifiedTimeUpdater tlsCertificateFilePath;
     protected FileModifiedTimeUpdater tlsKeyFilePath;
+    protected PrivateKey tlsPrivateKey;
+    protected Certificate[] tlsCertificates;
     protected InputStream tlsTrustCertsStream;
     protected boolean isTlsTrustStoreStreamProvided;
     protected final String[] defaultSslEnabledProtocols = {"TLSv1.3", "TLSv1.2"};
+    protected String tlsKeystoreType;
+    protected String tlsKeystorePath;
+    protected String tlsKeystorePassword;
 
     @Override
     public void initialize(PulsarSslConfiguration config) {
         this.config = config;
+        AuthenticationDataProvider authData = this.config.getAuthData();
         if (this.config.isTlsEnabledWithKeystore()) {
-            this.tlsKeyStore = new FileModifiedTimeUpdater(this.config.getTlsKeyStorePath());
+            if (authData != null && authData.hasDataForTls()) {
+                KeyStoreParams authParams = authData.getTlsKeyStoreParams();
+                if (authParams != null) {
+                    this.tlsKeystoreType = authParams.getKeyStoreType();
+                    this.tlsKeystorePath = authParams.getKeyStorePath();
+                    this.tlsKeystorePassword = authParams.getKeyStorePassword();
+                }
+            }
+            if (this.tlsKeystoreType == null) {
+                this.tlsKeystoreType = this.config.getTlsKeyStoreType();
+            }
+            if (this.tlsKeystorePath == null) {
+                this.tlsKeystorePath = this.config.getTlsKeyStorePath();
+            }
+            if (this.tlsKeystorePassword == null) {
+                this.tlsKeystorePassword = this.config.getTlsKeyStorePassword();
+            }
+            this.tlsKeyStore = new FileModifiedTimeUpdater(this.tlsKeystorePath);
             this.tlsTrustStore = new FileModifiedTimeUpdater(this.config.getTlsTrustStorePath());
         } else {
-            AuthenticationDataProvider authData = this.config.getAuthData();
             if (authData != null && authData.hasDataForTls()) {
-                this.tlsCertificateFilePath = new FileModifiedTimeUpdater(authData.getTlsCertificateFilePath());
-                this.tlsKeyFilePath = new FileModifiedTimeUpdater(authData.getTlsPrivateKeyFilePath());
                 if (authData.getTlsTrustStoreStream() != null) {
                     this.isTlsTrustStoreStreamProvided = true;
                     this.tlsTrustCertsStream = authData.getTlsTrustStoreStream();
+                    this.tlsCertificates = authData.getTlsCertificates();
+                    this.tlsPrivateKey = authData.getTlsPrivateKey();
                 } else {
+                    this.tlsCertificateFilePath = new FileModifiedTimeUpdater(authData.getTlsCertificateFilePath());
+                    this.tlsKeyFilePath = new FileModifiedTimeUpdater(authData.getTlsPrivateKeyFilePath());
                     this.tlsTrustCertsFilePath = new FileModifiedTimeUpdater(this.config.getTlsTrustCertsFilePath());
                 }
             } else {
@@ -110,15 +137,15 @@ public class DefaultPulsarSslFactory implements PulsarSslFactory {
         KeyStoreSSLContext keyStoreSSLContext;
         if (isServerMode) {
              keyStoreSSLContext = KeyStoreSSLContext.createServerKeyStoreSslContext(this.config.getTlsProvider(),
-                     this.config.getTlsKeyStoreType(), this.tlsKeyStore.getFileName(),
-                     this.config.getTlsKeyStorePassword(), this.config.isAllowInsecureConnection(),
+                     this.tlsKeystoreType, this.tlsKeyStore.getFileName(),
+                     this.tlsKeystorePassword, this.config.isAllowInsecureConnection(),
                      this.config.getTlsTrustStoreType(), this.tlsTrustStore.getFileName(),
                      this.config.getTlsTrustStorePassword(), this.config.isRequireTrustedClientCertOnConnect(),
                      this.config.getTlsCiphers(), this.config.getTlsProtocols());
         } else {
             keyStoreSSLContext = KeyStoreSSLContext.createClientKeyStoreSslContext(this.config.getTlsProvider(),
-                    this.config.getTlsKeyStoreType(), this.tlsKeyStore.getFileName(),
-                    this.config.getTlsKeyStorePassword(), this.config.isAllowInsecureConnection(),
+                    this.tlsKeystoreType, this.tlsKeyStore.getFileName(),
+                    this.tlsKeystorePassword, this.config.isAllowInsecureConnection(),
                     this.config.getTlsTrustStoreType(), this.tlsTrustStore.getFileName(),
                     this.config.getTlsTrustStorePassword(), this.config.getTlsCiphers(),
                     this.config.getTlsProtocols());
@@ -130,8 +157,8 @@ public class DefaultPulsarSslFactory implements PulsarSslFactory {
         return isTlsTrustStoreStreamProvided
                 ? SecurityUtility.createSslContext(this.config.isAllowInsecureConnection(),
                 SecurityUtility.loadCertificatesFromPemStream(this.tlsTrustCertsStream),
-                SecurityUtility.loadCertificatesFromPemFile(this.tlsCertificateFilePath.getFileName()),
-                SecurityUtility.loadPrivateKeyFromPemFile(this.tlsKeyFilePath.getFileName()),
+                this.tlsCertificates,
+                this.tlsPrivateKey,
                 this.config.getTlsProvider()) :
                 SecurityUtility.createSslContext(this.config.isAllowInsecureConnection(),
                         this.tlsTrustCertsFilePath.getFileName(),

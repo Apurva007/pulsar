@@ -315,6 +315,7 @@ public class HttpClient implements Closeable {
     protected PulsarSslConfiguration buildSslConfiguration(ClientConfigurationData config)
             throws PulsarClientException {
         return PulsarSslConfiguration.builder()
+                .tlsProvider(config.getSslProvider())
                 .tlsKeyStoreType(config.getTlsKeyStoreType())
                 .tlsKeyStorePath(config.getTlsKeyStorePath())
                 .tlsKeyStorePassword(config.getTlsKeyStorePassword())

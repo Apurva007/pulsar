@@ -748,7 +748,7 @@ public class BrokerServiceTest extends BrokerTestBase {
 
             fail("should fail");
         } catch (Exception e) {
-            assertTrue(e.getMessage().contains("General OpenSslEngine problem"));
+            assertTrue(e.getMessage().contains("unable to find valid certification path to requested target"));
         } finally {
             pulsarClient.close();
         }
