@@ -28,6 +28,9 @@ import java.util.Collections;
 import java.util.EnumSet;
 import java.util.List;
 import java.util.Optional;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.TimeUnit;
 import javax.servlet.DispatcherType;
 import org.apache.commons.lang3.tuple.Pair;
 import org.apache.pulsar.broker.authentication.AuthenticationService;
@@ -36,8 +39,9 @@ import org.apache.pulsar.broker.web.JettyRequestLogFactory;
 import org.apache.pulsar.broker.web.JsonMapperProvider;
 import org.apache.pulsar.broker.web.RateLimitingFilter;
 import org.apache.pulsar.broker.web.WebExecutorThreadPool;
-import org.apache.pulsar.common.util.DefaultSslFactory;
-import org.apache.pulsar.common.util.SslFactory;
+import org.apache.pulsar.client.util.ExecutorProvider;
+import org.apache.pulsar.common.util.PulsarSslConfiguration;
+import org.apache.pulsar.common.util.PulsarSslFactory;
 import org.apache.pulsar.jetty.tls.JettySslContextFactory;
 import org.eclipse.jetty.server.ConnectionFactory;
 import org.eclipse.jetty.server.ConnectionLimit;
@@ -85,6 +89,9 @@ public class WebServer {
     private ServerConnector connector;
     private ServerConnector connectorTls;
 
+    private ScheduledExecutorService scheduledExecutorService;
+    private PulsarSslFactory sslFactory;
+
     private final FilterInitializer filterInitializer;
 
     public WebServer(ProxyConfiguration config, AuthenticationService authenticationService) {
@@ -121,15 +128,25 @@ public class WebServer {
         }
         if (config.getWebServicePortTls().isPresent()) {
             try {
-                SslFactory sslFactory = new DefaultSslFactory(config.getTlsCertRefreshCheckDurationSec(), 600);
-                ((DefaultSslFactory) sslFactory).configure(config.getTlsProvider(),
-                        config.getTlsKeyStoreType(), config.getTlsKeyStore(), config.getTlsKeyStorePassword(),
-                        config.getTlsTrustStoreType(), config.getTlsTrustStore(), config.getTlsTrustStorePassword(),
-                        config.getWebServiceTlsCiphers(), config.getWebServiceTlsProtocols(),
-                        config.getTlsTrustCertsFilePath(), config.getTlsCertificateFilePath(),
-                        config.getTlsKeyFilePath(), config.isTlsAllowInsecureConnection(),
-                        config.isTlsRequireTrustedClientCertOnConnect(), null,
-                        config.isTlsEnabledWithKeyStore());
+                this.scheduledExecutorService = Executors.newSingleThreadScheduledExecutor(
+                        new ExecutorProvider.ExtendedThreadFactory("pulsar-proxy-web-server-tls-refresh"));
+                PulsarSslConfiguration sslConfiguration = buildSslConfiguration(config);
+                this.sslFactory = (PulsarSslFactory) Class.forName(config.getSslFactoryPlugin())
+                        .getConstructor().newInstance();
+                this.sslFactory.initialize(sslConfiguration);
+                this.sslFactory.createInternalSslContext();
+                scheduledExecutorService.scheduleWithFixedDelay(this::refreshSslContext,
+                        config.getTlsCertRefreshCheckDurationSec(),
+                        config.getTlsCertRefreshCheckDurationSec(), TimeUnit.SECONDS);
+//                SslFactory sslFactory = new DefaultSslFactory(config.getTlsCertRefreshCheckDurationSec(), 600);
+//                ((DefaultSslFactory) sslFactory).configure(config.getTlsProvider(),
+//                        config.getTlsKeyStoreType(), config.getTlsKeyStore(), config.getTlsKeyStorePassword(),
+//                        config.getTlsTrustStoreType(), config.getTlsTrustStore(), config.getTlsTrustStorePassword(),
+//                        config.getWebServiceTlsCiphers(), config.getWebServiceTlsProtocols(),
+//                        config.getTlsTrustCertsFilePath(), config.getTlsCertificateFilePath(),
+//                        config.getTlsKeyFilePath(), config.isTlsAllowInsecureConnection(),
+//                        config.isTlsRequireTrustedClientCertOnConnect(), null,
+//                        config.isTlsEnabledWithKeyStore());
                 SslContextFactory sslCtxFactory =
                         JettySslContextFactory.createSslContextFactory(config.getTlsProvider(),
                                 sslFactory, config.isTlsRequireTrustedClientCertOnConnect(),
@@ -397,6 +414,37 @@ public class WebServer {
             return Optional.of(connectorTls.getLocalPort());
         } else {
             return Optional.empty();
+        }
+    }
+
+    protected PulsarSslConfiguration buildSslConfiguration(ProxyConfiguration config) {
+        return PulsarSslConfiguration.builder()
+                .tlsProvider(config.getBrokerClientSslProvider())
+                .tlsKeyStoreType(config.getBrokerClientTlsKeyStoreType())
+                .tlsKeyStorePath(config.getBrokerClientTlsKeyStore())
+                .tlsKeyStorePassword(config.getBrokerClientTlsKeyStorePassword())
+                .tlsTrustStoreType(config.getBrokerClientTlsTrustStoreType())
+                .tlsTrustStorePath(config.getBrokerClientTlsTrustStore())
+                .tlsTrustStorePassword(config.getBrokerClientTlsTrustStorePassword())
+                .tlsCiphers(config.getBrokerClientTlsCiphers())
+                .tlsProtocols(config.getBrokerClientTlsProtocols())
+                .tlsTrustCertsFilePath(config.getBrokerClientTrustCertsFilePath())
+                .tlsCertificateFilePath(config.getBrokerClientCertificateFilePath())
+                .tlsKeyFilePath(config.getBrokerClientKeyFilePath())
+                .allowInsecureConnection(config.isTlsAllowInsecureConnection())
+                .requireTrustedClientCertOnConnect(false)
+                .tlsEnabledWithKeystore(config.isBrokerClientTlsEnabledWithKeyStore())
+                .tlsCustomParams(config.getBrokerClientSslFactoryPluginParams())
+                .authData(null)
+                .serverMode(true)
+                .build();
+    }
+
+    protected void refreshSslContext() {
+        try {
+            this.sslFactory.update();
+        } catch (Exception e) {
+            log.error("Failed to refresh SSL context", e);
         }
     }
 

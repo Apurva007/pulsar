@@ -40,7 +40,6 @@ import picocli.CommandLine.ArgGroup;
 import picocli.CommandLine.Command;
 import picocli.CommandLine.Option;
 import picocli.CommandLine.ScopeType;
-import org.apache.pulsar.common.util.DefaultSslFactory;
 
 @Command(
         name = "pulsar-client",

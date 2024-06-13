@@ -21,8 +21,8 @@ package org.apache.pulsar.jetty.tls;
 import java.util.Set;
 import javax.net.ssl.SSLContext;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.pulsar.common.util.PulsarSslFactory;
 import org.apache.pulsar.common.util.SecurityUtility;
-import org.apache.pulsar.common.util.SslFactory;
 import org.eclipse.jetty.util.ssl.SslContextFactory;
 
 @Slf4j
@@ -79,21 +79,22 @@ public class JettySslContextFactory {
 //                tlsRequireTrustedClientCertOnConnect, ciphers, protocols);
 //    }
 
-    public static SslContextFactory.Server createSslContextFactory(String sslProviderString, SslFactory sslFactory,
-                                                            boolean requireTrustedClientCertOnConnect,
-                                                            Set<String> ciphers, Set<String> protocols) {
-        return new JettySslContextFactory.Server(sslProviderString, sslFactory, requireTrustedClientCertOnConnect,
-                ciphers, protocols);
+    public static SslContextFactory.Server createSslContextFactory(String sslProviderString,
+                                                                   PulsarSslFactory pulsarSslFactory,
+                                                                   boolean requireTrustedClientCertOnConnect,
+                                                                   Set<String> ciphers, Set<String> protocols) {
+        return new JettySslContextFactory.Server(sslProviderString, pulsarSslFactory,
+                requireTrustedClientCertOnConnect, ciphers, protocols);
 
     }
 
     private static class Server extends SslContextFactory.Server {
-        private final SslFactory sslFactory;
+        private final PulsarSslFactory pulsarSslFactory;
 
-        public Server(String sslProviderString, SslFactory sslFactory,
+        public Server(String sslProviderString, PulsarSslFactory pulsarSslFactory,
                       boolean requireTrustedClientCertOnConnect, Set<String> ciphers, Set<String> protocols) {
             super();
-            this.sslFactory = sslFactory;
+            this.pulsarSslFactory = pulsarSslFactory;
 
             if (ciphers != null && ciphers.size() > 0) {
                 this.setIncludeCipherSuites(ciphers.toArray(new String[0]));
@@ -118,7 +119,7 @@ public class JettySslContextFactory {
 
         @Override
         public SSLContext getSslContext() {
-            return this.sslFactory.getInternalSslContext();
+            return this.pulsarSslFactory.getInternalSslContext();
         }
     }
 }

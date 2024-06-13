@@ -1034,7 +1034,7 @@ public class BrokerServiceTest extends BrokerTestBase {
                 }
                 super.handlePartitionResponse(lookupResult);
             }
-        })) {
+        }, null)) {
             // for PMR
             // 2 lookup will succeed
             long reqId1 = reqId++;

@@ -25,13 +25,15 @@ import java.util.EnumSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.TimeUnit;
 import javax.servlet.DispatcherType;
 import lombok.Getter;
 import org.apache.pulsar.broker.PulsarServerException;
 import org.apache.pulsar.broker.PulsarService;
 import org.apache.pulsar.broker.ServiceConfiguration;
-import org.apache.pulsar.common.util.DefaultSslFactory;
-import org.apache.pulsar.common.util.SslFactory;
+import org.apache.pulsar.common.util.PulsarSslConfiguration;
+import org.apache.pulsar.common.util.PulsarSslFactory;
 import org.apache.pulsar.jetty.tls.JettySslContextFactory;
 import org.eclipse.jetty.server.ConnectionFactory;
 import org.eclipse.jetty.server.ConnectionLimit;
@@ -73,7 +75,6 @@ public class WebService implements AutoCloseable {
 
     public static final String ATTRIBUTE_PULSAR_NAME = "pulsar";
     public static final String HANDLER_CACHE_CONTROL = "max-age=3600";
-
     private final PulsarService pulsar;
     private final Server server;
     private final List<Handler> handlers;
@@ -86,7 +87,9 @@ public class WebService implements AutoCloseable {
     private final ServerConnector httpsConnector;
     private final FilterInitializer filterInitializer;
     private JettyStatisticsCollector jettyStatisticsCollector;
-    private SslFactory sslFactory;
+    private PulsarSslFactory sslFactory;
+    private ScheduledExecutorService scheduledExecutorService;
+
 
     @Getter
     private static final DynamicSkipUnknownPropertyHandler sharedUnknownPropertyHandler =
@@ -138,36 +141,46 @@ public class WebService implements AutoCloseable {
         Optional<Integer> tlsPort = config.getWebServicePortTls();
         if (tlsPort.isPresent()) {
             try {
-                this.sslFactory = (SslFactory) Class.forName(config.getSslFactoryPlugin())
-                        .getDeclaredConstructor(Long.TYPE, Long.TYPE)
-                        .newInstance(config.getTlsCertRefreshCheckDurationSec(), 1000L);
-//                this.sslFactory = new DefaultSslFactory(config.getTlsCertRefreshCheckDurationSec(), 1000L);
-                if (this.sslFactory instanceof DefaultSslFactory) {
-                    ((DefaultSslFactory) this.sslFactory).configure(config.getTlsProvider(),
-                            config.getWebServiceTlsProvider(),
-                            config.getTlsKeyStore(),
-                            config.getTlsKeyStorePassword(),
-                            config.getTlsTrustStoreType(),
-                            config.getTlsTrustStore(),
-                            config.getTlsTrustStorePassword(),
-                            config.getWebServiceTlsCiphers(),
-                            config.getWebServiceTlsProtocols(),
-                            config.getTlsTrustCertsFilePath(),
-                            config.getTlsCertificateFilePath(),
-                            config.getTlsKeyFilePath(),
-                            config.isTlsAllowInsecureConnection(),
-                            config.isTlsRequireTrustedClientCertOnConnect(),
-                            null,
-                            config.isTlsEnabledWithKeyStore());
-                } else {
-                    this.sslFactory.configure(config.getWebServiceTlsProvider(),
-                            config.getWebServiceTlsCiphers(),
-                            config.getWebServiceTlsProtocols(),
-                            config.isTlsAllowInsecureConnection(),
-                            config.isTlsRequireTrustedClientCertOnConnect(),
-                            null,
-                            config.getSslFactoryPluginParams());
-                }
+//                this.pulsarSslFactoryTemp = (PulsarSslFactoryTemp) Class.forName(config.getSslFactoryPlugin())
+//                        .getDeclaredConstructor(Long.TYPE, Long.TYPE)
+//                        .newInstance(config.getTlsCertRefreshCheckDurationSec(), 1000L);
+////                this.sslFactory = new DefaultSslFactory(config.getTlsCertRefreshCheckDurationSec(), 1000L);
+//                if (this.pulsarSslFactoryTemp instanceof DefaultPulsarSslFactoryTemp) {
+//                    ((DefaultPulsarSslFactoryTemp) this.pulsarSslFactoryTemp).configure(config.getTlsProvider(),
+//                            config.getWebServiceTlsProvider(),
+//                            config.getTlsKeyStore(),
+//                            config.getTlsKeyStorePassword(),
+//                            config.getTlsTrustStoreType(),
+//                            config.getTlsTrustStore(),
+//                            config.getTlsTrustStorePassword(),
+//                            config.getWebServiceTlsCiphers(),
+//                            config.getWebServiceTlsProtocols(),
+//                            config.getTlsTrustCertsFilePath(),
+//                            config.getTlsCertificateFilePath(),
+//                            config.getTlsKeyFilePath(),
+//                            config.isTlsAllowInsecureConnection(),
+//                            config.isTlsRequireTrustedClientCertOnConnect(),
+//                            null,
+//                            config.isTlsEnabledWithKeyStore());
+//                } else {
+//                    this.pulsarSslFactoryTemp.configure(config.getWebServiceTlsProvider(),
+//                            config.getWebServiceTlsCiphers(),
+//                            config.getWebServiceTlsProtocols(),
+//                            config.isTlsAllowInsecureConnection(),
+//                            config.isTlsRequireTrustedClientCertOnConnect(),
+//                            null,
+//                            config.getSslFactoryPluginParams());
+//                }
+                PulsarSslConfiguration sslConfiguration = buildSslConfiguration(config);
+                this.sslFactory = (PulsarSslFactory) Class.forName(config.getSslFactoryPlugin())
+                        .getConstructor().newInstance();
+                this.sslFactory.initialize(sslConfiguration);
+                this.sslFactory.createInternalSslContext();
+                this.scheduledExecutorService = this.pulsar.getExecutor();
+                this.scheduledExecutorService.scheduleWithFixedDelay(this::refreshSslContext,
+                        config.getTlsCertRefreshCheckDurationSec(),
+                        config.getTlsCertRefreshCheckDurationSec(),
+                        TimeUnit.SECONDS);
                 SslContextFactory sslCtxFactory =
                         JettySslContextFactory.createSslContextFactory(config.getWebServiceTlsProvider(),
                                 this.sslFactory, config.isTlsRequireTrustedClientCertOnConnect(),
@@ -200,7 +213,6 @@ public class WebService implements AutoCloseable {
 //                            config.getWebServiceTlsProtocols(),
 //                            config.getTlsCertRefreshCheckDurationSec());
 //                }
-                httpsConnector = new ServerConnector(server, sslCtxFactory, new HttpConnectionFactory(httpConfig));
                 List<ConnectionFactory> connectionFactories = new ArrayList<>();
                 if (config.isWebServiceHaProxyProtocolEnabled()) {
                     connectionFactories.add(new ProxyConnectionFactory());
@@ -439,6 +451,35 @@ public class WebService implements AutoCloseable {
             return Optional.of(httpsConnector.getLocalPort());
         } else {
             return Optional.empty();
+        }
+    }
+
+    protected PulsarSslConfiguration buildSslConfiguration(ServiceConfiguration serviceConfig) {
+        return PulsarSslConfiguration.builder()
+                .tlsKeyStoreType(serviceConfig.getTlsKeyStoreType())
+                .tlsKeyStorePath(serviceConfig.getTlsKeyStore())
+                .tlsKeyStorePassword(serviceConfig.getTlsKeyStorePassword())
+                .tlsTrustStoreType(serviceConfig.getTlsTrustStoreType())
+                .tlsTrustStorePath(serviceConfig.getTlsTrustStore())
+                .tlsTrustStorePassword(serviceConfig.getTlsTrustStorePassword())
+                .tlsCiphers(serviceConfig.getTlsCiphers())
+                .tlsProtocols(serviceConfig.getTlsProtocols())
+                .tlsTrustCertsFilePath(serviceConfig.getTlsTrustCertsFilePath())
+                .tlsCertificateFilePath(serviceConfig.getTlsCertificateFilePath())
+                .tlsKeyFilePath(serviceConfig.getTlsKeyFilePath())
+                .allowInsecureConnection(serviceConfig.isTlsAllowInsecureConnection())
+                .requireTrustedClientCertOnConnect(serviceConfig.isTlsRequireTrustedClientCertOnConnect())
+                .tlsEnabledWithKeystore(serviceConfig.isTlsEnabledWithKeyStore())
+                .tlsCustomParams(serviceConfig.getSslFactoryPluginParams())
+                .serverMode(true)
+                .build();
+    }
+
+    protected void refreshSslContext() {
+        try {
+            this.sslFactory.update();
+        } catch (Exception e) {
+            log.error("Failed to refresh SSL context", e);
         }
     }
 

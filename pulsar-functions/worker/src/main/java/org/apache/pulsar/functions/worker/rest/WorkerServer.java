@@ -23,6 +23,9 @@ import java.util.ArrayList;
 import java.util.EnumSet;
 import java.util.List;
 import java.util.Optional;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.TimeUnit;
 import javax.servlet.DispatcherType;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.pulsar.broker.authentication.AuthenticationService;
@@ -30,8 +33,10 @@ import org.apache.pulsar.broker.web.AuthenticationFilter;
 import org.apache.pulsar.broker.web.JettyRequestLogFactory;
 import org.apache.pulsar.broker.web.RateLimitingFilter;
 import org.apache.pulsar.broker.web.WebExecutorThreadPool;
-import org.apache.pulsar.common.util.DefaultSslFactory;
-import org.apache.pulsar.common.util.SslFactory;
+import org.apache.pulsar.client.util.ExecutorProvider;
+import org.apache.pulsar.common.util.DefaultPulsarSslFactory;
+import org.apache.pulsar.common.util.PulsarSslConfiguration;
+import org.apache.pulsar.common.util.PulsarSslFactory;
 import org.apache.pulsar.functions.worker.WorkerConfig;
 import org.apache.pulsar.functions.worker.WorkerService;
 import org.apache.pulsar.functions.worker.rest.api.v2.WorkerApiV2Resource;
@@ -75,6 +80,8 @@ public class WorkerServer {
     private ServerConnector httpsConnector;
 
     private final FilterInitializer filterInitializer;
+    private PulsarSslFactory sslFactory;
+    private ScheduledExecutorService scheduledExecutorService;
 
     public WorkerServer(WorkerService workerService, AuthenticationService authenticationService) {
         this.workerConfig = workerService.getWorkerConfig();
@@ -155,20 +162,32 @@ public class WorkerServer {
         if (this.workerConfig.getTlsEnabled()) {
             log.info("Configuring https server on port={}", this.workerConfig.getWorkerPortTls());
             try {
-                SslFactory sslFactory = new DefaultSslFactory(this.workerConfig.getTlsCertRefreshCheckDurationSec(),
-                        600);
-                ((DefaultSslFactory) sslFactory).configure(this.workerConfig.getTlsProvider(),
-                        this.workerConfig.getTlsKeyStoreType(), this.workerConfig.getTlsKeyStore(),
-                        this.workerConfig.getTlsKeyStorePassword(), this.workerConfig.getTlsTrustStoreType(),
-                        this.workerConfig.getTlsTrustStore(), this.workerConfig.getTlsTrustStorePassword(),
-                        this.workerConfig.getWebServiceTlsCiphers(), this.workerConfig.getWebServiceTlsProtocols(),
-                        this.workerConfig.getTlsTrustCertsFilePath(), this.workerConfig.getTlsCertificateFilePath(),
-                        this.workerConfig.getTlsKeyFilePath(), this.workerConfig.isTlsAllowInsecureConnection(),
-                        this.workerConfig.isTlsRequireTrustedClientCertOnConnect(), null,
-                        this.workerConfig.isTlsEnabledWithKeyStore());
+//                PulsarSslFactoryTemp pulsarSslFactoryTemp =
+//                        new DefaultPulsarSslFactoryTemp(this.workerConfig.getTlsCertRefreshCheckDurationSec(),
+//                        600);
+//                ((DefaultPulsarSslFactoryTemp) pulsarSslFactoryTemp).configure(this.workerConfig.getTlsProvider(),
+//                        this.workerConfig.getTlsKeyStoreType(), this.workerConfig.getTlsKeyStore(),
+//                        this.workerConfig.getTlsKeyStorePassword(), this.workerConfig.getTlsTrustStoreType(),
+//                        this.workerConfig.getTlsTrustStore(), this.workerConfig.getTlsTrustStorePassword(),
+//                        this.workerConfig.getWebServiceTlsCiphers(), this.workerConfig.getWebServiceTlsProtocols(),
+//                        this.workerConfig.getTlsTrustCertsFilePath(), this.workerConfig.getTlsCertificateFilePath(),
+//                        this.workerConfig.getTlsKeyFilePath(), this.workerConfig.isTlsAllowInsecureConnection(),
+//                        this.workerConfig.isTlsRequireTrustedClientCertOnConnect(), null,
+//                        this.workerConfig.isTlsEnabledWithKeyStore());
+                PulsarSslConfiguration sslConfiguration = buildSslConfiguration(workerConfig);
+                this.sslFactory = new DefaultPulsarSslFactory();
+                this.sslFactory.initialize(sslConfiguration);
+                this.sslFactory.createInternalSslContext();
+                this.scheduledExecutorService = Executors
+                        .newSingleThreadScheduledExecutor(new ExecutorProvider
+                                .ExtendedThreadFactory("functions-worker-web-ssl-refresh"));
+                this.scheduledExecutorService.scheduleWithFixedDelay(this::refreshSslContext,
+                        workerConfig.getTlsCertRefreshCheckDurationSec(),
+                        workerConfig.getTlsCertRefreshCheckDurationSec(),
+                        TimeUnit.SECONDS);
                 SslContextFactory sslCtxFactory =
                         JettySslContextFactory.createSslContextFactory(this.workerConfig.getTlsProvider(),
-                                sslFactory, this.workerConfig.isTlsRequireTrustedClientCertOnConnect(),
+                                this.sslFactory, this.workerConfig.isTlsRequireTrustedClientCertOnConnect(),
                                 this.workerConfig.getWebServiceTlsCiphers(),
                                 this.workerConfig.getWebServiceTlsProtocols());
 //                SslContextFactory sslCtxFactory;
@@ -303,6 +322,9 @@ public class WorkerServer {
                 log.warn("Error stopping function web-server executor", e);
             }
         }
+        if (this.scheduledExecutorService != null) {
+            this.scheduledExecutorService.shutdownNow();
+        }
     }
 
     public Optional<Integer> getListenPortHTTP() {
@@ -319,5 +341,33 @@ public class WorkerServer {
         } else {
             return Optional.empty();
         }
+    }
+
+    protected void refreshSslContext() {
+        try {
+            this.sslFactory.update();
+        } catch (Exception e) {
+            log.error("Failed to refresh SSL context", e);
+        }
+    }
+
+    protected PulsarSslConfiguration buildSslConfiguration(WorkerConfig config) {
+        return PulsarSslConfiguration.builder()
+                .tlsKeyStoreType(config.getTlsKeyStoreType())
+                .tlsKeyStorePath(config.getTlsKeyStore())
+                .tlsKeyStorePassword(config.getTlsKeyStorePassword())
+                .tlsTrustStoreType(config.getTlsTrustStoreType())
+                .tlsTrustStorePath(config.getTlsTrustStore())
+                .tlsTrustStorePassword(config.getTlsTrustStorePassword())
+                .tlsCiphers(config.getWebServiceTlsCiphers())
+                .tlsProtocols(config.getWebServiceTlsProtocols())
+                .tlsTrustCertsFilePath(config.getTlsTrustCertsFilePath())
+                .tlsCertificateFilePath(config.getTlsCertificateFilePath())
+                .tlsKeyFilePath(config.getTlsKeyFilePath())
+                .allowInsecureConnection(config.isTlsAllowInsecureConnection())
+                .requireTrustedClientCertOnConnect(config.isTlsRequireTrustedClientCertOnConnect())
+                .tlsEnabledWithKeystore(config.isTlsEnabledWithKeyStore())
+                .serverMode(true)
+                .build();
     }
 }

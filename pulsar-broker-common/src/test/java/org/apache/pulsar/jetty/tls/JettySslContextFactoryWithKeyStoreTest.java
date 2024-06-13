@@ -43,8 +43,9 @@ import org.apache.http.impl.client.HttpClients;
 import org.apache.http.impl.conn.PoolingHttpClientConnectionManager;
 import org.apache.logging.log4j.Level;
 import org.apache.logging.log4j.core.config.Configurator;
-import org.apache.pulsar.common.util.DefaultSslFactory;
-import org.apache.pulsar.common.util.SslFactory;
+import org.apache.pulsar.common.util.DefaultPulsarSslFactory;
+import org.apache.pulsar.common.util.PulsarSslConfiguration;
+import org.apache.pulsar.common.util.PulsarSslFactory;
 import org.eclipse.jetty.server.Server;
 import org.eclipse.jetty.server.ServerConnector;
 import org.eclipse.jetty.util.ssl.SslContextFactory;
@@ -68,11 +69,23 @@ public class JettySslContextFactoryWithKeyStoreTest {
         @Cleanup("stop")
         Server server = new Server();
         List<ServerConnector> connectors = new ArrayList<>();
-        SslFactory sslFactory = new DefaultSslFactory(600, 600);
-        ((DefaultSslFactory) sslFactory).configure(null, keyStoreType, brokerKeyStorePath,
-                keyStorePassword, keyStoreType, clientTrustStorePath, keyStorePassword, null, null,
-                null, null, null, false, true,
-                null, true);
+//        PulsarSslFactoryTemp pulsarSslFactoryTemp = new DefaultPulsarSslFactoryTemp(600, 600);
+//        ((DefaultPulsarSslFactoryTemp) pulsarSslFactoryTemp).configure(null, keyStoreType, brokerKeyStorePath,
+//                keyStorePassword, keyStoreType, clientTrustStorePath, keyStorePassword, null, null,
+//                null, null, null, false, true,
+//                null, true);
+        PulsarSslConfiguration sslConfiguration = PulsarSslConfiguration.builder()
+                .tlsKeyStoreType(keyStoreType)
+                .tlsKeyStorePath(brokerKeyStorePath)
+                .tlsKeyStorePassword(keyStorePassword)
+                .tlsTrustStoreType(keyStoreType)
+                .tlsTrustStorePath(clientTrustStorePath)
+                .tlsTrustStorePassword(keyStorePassword)
+                .requireTrustedClientCertOnConnect(true)
+                .tlsEnabledWithKeystore(true).build();
+        PulsarSslFactory sslFactory = new DefaultPulsarSslFactory();
+        sslFactory.initialize(sslConfiguration);
+        sslFactory.createInternalSslContext();
 //        SslContextFactory.Server factory = JettySslContextFactory.createServerSslContextWithKeystore(null,
 //                keyStoreType, brokerKeyStorePath, keyStorePassword, false, keyStoreType,
 //                clientTrustStorePath, keyStorePassword, true, null,
@@ -104,16 +117,33 @@ public class JettySslContextFactoryWithKeyStoreTest {
         @Cleanup("stop")
         Server server = new Server();
         List<ServerConnector> connectors = new ArrayList<>();
-        SslFactory sslFactory = new DefaultSslFactory(600, 600);
-        ((DefaultSslFactory) sslFactory).configure(null, keyStoreType, brokerKeyStorePath,
-                keyStorePassword, keyStoreType, clientTrustStorePath, keyStorePassword, null,
-                new HashSet<String>() {
+//        PulsarSslFactoryTemp pulsarSslFactoryTemp = new DefaultPulsarSslFactoryTemp(600, 600);
+//        ((DefaultPulsarSslFactoryTemp) pulsarSslFactoryTemp).configure(null, keyStoreType, brokerKeyStorePath,
+//                keyStorePassword, keyStoreType, clientTrustStorePath, keyStorePassword, null,
+//                new HashSet<String>() {
+//                    {
+//                        this.add("TLSv1.3");
+//                    }
+//                },
+//                null, null, null, false, true,
+//                null, true);
+        PulsarSslConfiguration sslConfiguration = PulsarSslConfiguration.builder()
+                .tlsKeyStoreType(keyStoreType)
+                .tlsKeyStorePath(brokerKeyStorePath)
+                .tlsKeyStorePassword(keyStorePassword)
+                .tlsTrustStoreType(keyStoreType)
+                .tlsTrustStorePath(clientTrustStorePath)
+                .tlsTrustStorePassword(keyStorePassword)
+                .tlsProtocols(new HashSet<String>() {
                     {
                         this.add("TLSv1.3");
                     }
-                },
-                null, null, null, false, true,
-                null, true);
+                })
+                .requireTrustedClientCertOnConnect(true)
+                .tlsEnabledWithKeystore(true).build();
+        PulsarSslFactory sslFactory = new DefaultPulsarSslFactory();
+        sslFactory.initialize(sslConfiguration);
+        sslFactory.createInternalSslContext();
         SslContextFactory.Server factory = JettySslContextFactory.createSslContextFactory(null,
                 sslFactory, true, null,
                 new HashSet<String>() {
@@ -145,21 +175,43 @@ public class JettySslContextFactoryWithKeyStoreTest {
         @Cleanup("stop")
         Server server = new Server();
         List<ServerConnector> connectors = new ArrayList<>();
-        SslFactory sslFactory = new DefaultSslFactory(600, 600);
-        ((DefaultSslFactory) sslFactory).configure(null, keyStoreType, brokerKeyStorePath,
-                keyStorePassword, keyStoreType, clientTrustStorePath, keyStorePassword,
-                new HashSet<String>() {
+//        PulsarSslFactoryTemp pulsarSslFactoryTemp = new DefaultPulsarSslFactoryTemp(600, 600);
+//        ((DefaultPulsarSslFactoryTemp) pulsarSslFactoryTemp).configure(null, keyStoreType, brokerKeyStorePath,
+//                keyStorePassword, keyStoreType, clientTrustStorePath, keyStorePassword,
+//                new HashSet<String>() {
+//                    {
+//                        this.add("TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256");
+//                    }
+//                },
+//                new HashSet<String>() {
+//                    {
+//                        this.add("TLSv1.3");
+//                    }
+//                },
+//                null, null, null, false, true,
+//                null, true);
+        PulsarSslConfiguration sslConfiguration = PulsarSslConfiguration.builder()
+                .tlsKeyStoreType(keyStoreType)
+                .tlsKeyStorePath(brokerKeyStorePath)
+                .tlsKeyStorePassword(keyStorePassword)
+                .tlsTrustStoreType(keyStoreType)
+                .tlsTrustStorePath(clientTrustStorePath)
+                .tlsTrustStorePassword(keyStorePassword)
+                .tlsCiphers(new HashSet<String>() {
                     {
                         this.add("TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256");
                     }
-                },
-                new HashSet<String>() {
+                })
+                .tlsProtocols(new HashSet<String>() {
                     {
                         this.add("TLSv1.3");
                     }
-                },
-                null, null, null, false, true,
-                null, true);
+                })
+                .requireTrustedClientCertOnConnect(true)
+                .tlsEnabledWithKeystore(true).build();
+        PulsarSslFactory sslFactory = new DefaultPulsarSslFactory();
+        sslFactory.initialize(sslConfiguration);
+        sslFactory.createInternalSslContext();
         SslContextFactory.Server factory = JettySslContextFactory.createSslContextFactory(null,
                 sslFactory, true,
                 new HashSet<String>() {

@@ -259,7 +259,7 @@ public class ProxyParserTest extends MockedPulsarServiceBaseTest {
                     throw new UnsupportedOperationException();
                 }
             };
-        });
+        }, null);
 
         return new PulsarClientImpl(conf, eventLoopGroup, cnxPool);
     }

@@ -42,7 +42,7 @@ import org.apache.pulsar.client.api.ProxyProtocol;
 import org.apache.pulsar.client.api.ServiceUrlProvider;
 import org.apache.pulsar.client.impl.auth.AuthenticationDisabled;
 import org.apache.pulsar.client.util.Secret;
-import org.apache.pulsar.common.util.DefaultSslFactory;
+import org.apache.pulsar.common.util.DefaultPulsarSslFactory;
 
 /**
  * This is a simple holder of the client configuration values.
@@ -187,8 +187,8 @@ public class ClientConfigurationData implements Serializable, Cloneable {
     @ApiModelProperty(
             name = "sslFactoryPlugin",
             value = "SSL Factory Plugin class to provide SSLEngine and SSLContext objects. The default "
-                    + " class used is DefaultSslFactory.")
-    private String sslFactoryPlugin = DefaultSslFactory.class.getName();
+                    + " class used is DefaultPulsarSslFactory.")
+    private String sslFactoryPlugin = DefaultPulsarSslFactory.class.getName();
     @ApiModelProperty(
             name = "sslFactoryPluginParams",
             value = "SSL Factory plugin configuration parameters.")

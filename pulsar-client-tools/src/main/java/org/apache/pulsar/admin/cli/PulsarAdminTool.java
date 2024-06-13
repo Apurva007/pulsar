@@ -37,7 +37,7 @@ import org.apache.pulsar.admin.cli.utils.CustomCommandFactoryProvider;
 import org.apache.pulsar.client.admin.PulsarAdmin;
 import org.apache.pulsar.client.admin.PulsarAdminBuilder;
 import org.apache.pulsar.client.admin.internal.PulsarAdminImpl;
-import org.apache.pulsar.common.util.DefaultSslFactory;
+import org.apache.pulsar.common.util.DefaultPulsarSslFactory;
 import org.apache.pulsar.common.util.ShutdownUtil;
 import org.apache.pulsar.internal.CommandHook;
 import org.apache.pulsar.internal.CommanderFactory;
@@ -132,7 +132,7 @@ public class PulsarAdminTool implements CommandHook {
                 .getProperty("tlsEnableHostnameVerification", "false"));
         final String tlsTrustCertsFilePath = properties.getProperty("tlsTrustCertsFilePath");
         final String sslFactoryPlugin = properties.getProperty("sslFactoryPlugin",
-                DefaultSslFactory.class.getName());
+                DefaultPulsarSslFactory.class.getName());
         final String sslFactoryPluginParams = properties.getProperty("sslFactoryPluginParams", "");
 
         return PulsarAdmin.builder().allowTlsInsecureConnection(tlsAllowInsecureConnection)

@@ -28,7 +28,7 @@ import lombok.NoArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.pulsar.client.api.ProxyProtocol;
-import org.apache.pulsar.common.util.DefaultSslFactory;
+import org.apache.pulsar.common.util.DefaultPulsarSslFactory;
 import org.apache.pulsar.common.util.URIPreconditions;
 
 /**
@@ -244,7 +244,7 @@ public final class ClusterDataImpl implements  ClusterData, Cloneable {
         private String brokerClientCertificateFilePath;
         private String brokerClientKeyFilePath;
         private String brokerClientTrustCertsFilePath;
-        private String brokerClientSslFactoryPlugin = DefaultSslFactory.class.getName();
+        private String brokerClientSslFactoryPlugin = DefaultPulsarSslFactory.class.getName();
         private String brokerClientSslFactoryPluginParams;
         private String listenerName;
 

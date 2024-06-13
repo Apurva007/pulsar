@@ -24,17 +24,23 @@ import io.netty.handler.codec.LengthFieldBasedFrameDecoder;
 import io.netty.handler.flush.FlushConsolidationHandler;
 import io.netty.handler.ssl.SslHandler;
 import io.netty.handler.timeout.ReadTimeoutHandler;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
+import org.apache.pulsar.client.util.ExecutorProvider;
 import org.apache.pulsar.common.protocol.Commands;
 import org.apache.pulsar.common.protocol.OptionalProxyProtocolDecoder;
-import org.apache.pulsar.common.util.DefaultSslFactory;
-import org.apache.pulsar.common.util.SslFactory;
+import org.apache.pulsar.common.util.PulsarSslConfiguration;
+import org.apache.pulsar.common.util.PulsarSslFactory;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * Initialize service channel handlers.
  *
  */
 public class ServiceChannelInitializer extends ChannelInitializer<SocketChannel> {
+    private static final Logger log = LoggerFactory.getLogger(ServiceChannelInitializer.class);
 
     public static final String TLS_HANDLER = "tls";
     private final ProxyService proxyService;
@@ -45,7 +51,8 @@ public class ServiceChannelInitializer extends ChannelInitializer<SocketChannel>
 
 //    private SslContextAutoRefreshBuilder<SslContext> serverSslCtxRefresher;
 //    private NettySSLContextAutoRefreshBuilder serverSSLContextAutoRefreshBuilder;
-    private final SslFactory sslFactory;
+    private PulsarSslFactory sslFactory;
+    private ScheduledExecutorService scheduledExecutorService;
 
     public ServiceChannelInitializer(ProxyService proxyService, ProxyConfiguration serviceConfig, boolean enableTls)
             throws Exception {
@@ -57,36 +64,46 @@ public class ServiceChannelInitializer extends ChannelInitializer<SocketChannel>
         this.maxMessageSize = serviceConfig.getMaxMessageSize();
 
         if (enableTls) {
-            this.sslFactory = (SslFactory) Class.forName(serviceConfig.getSslFactoryPlugin())
-                    .getDeclaredConstructor(Long.TYPE, Long.TYPE)
-                    .newInstance(serviceConfig.getTlsCertRefreshCheckDurationSec(), 1000L);
+            this.scheduledExecutorService = Executors.newSingleThreadScheduledExecutor(
+                    new ExecutorProvider.ExtendedThreadFactory("pulsar-proxy-service-channel-tls-refresh"));
+            PulsarSslConfiguration sslConfiguration = buildSslConfiguration(serviceConfig);
+            this.sslFactory = (PulsarSslFactory) Class.forName(serviceConfig.getSslFactoryPlugin())
+                    .getConstructor().newInstance();
+            this.sslFactory.initialize(sslConfiguration);
+            this.sslFactory.createInternalSslContext();
+            scheduledExecutorService.scheduleWithFixedDelay(this::refreshSslContext,
+                    serviceConfig.getTlsCertRefreshCheckDurationSec(),
+                    serviceConfig.getTlsCertRefreshCheckDurationSec(), TimeUnit.SECONDS);
+//            this.sslFactory = (SslFactory) Class.forName(serviceConfig.getSslFactoryPlugin())
+//                    .getDeclaredConstructor(Long.TYPE, Long.TYPE)
+//                    .newInstance(serviceConfig.getTlsCertRefreshCheckDurationSec(), 1000L);
 //            this.sslFactory = new DefaultSslFactory(serviceConfig.getTlsCertRefreshCheckDurationSec(), 600);
-            if (this.sslFactory instanceof DefaultSslFactory) {
-                ((DefaultSslFactory) this.sslFactory).configure(serviceConfig.getTlsProvider(),
-                        serviceConfig.getTlsKeyStoreType(),
-                        serviceConfig.getTlsKeyStore(),
-                        serviceConfig.getTlsKeyStorePassword(),
-                        serviceConfig.getTlsTrustStoreType(),
-                        serviceConfig.getTlsTrustStore(),
-                        serviceConfig.getTlsTrustStorePassword(),
-                        serviceConfig.getTlsCiphers(),
-                        serviceConfig.getTlsProtocols(),
-                        serviceConfig.getTlsTrustCertsFilePath(),
-                        serviceConfig.getTlsCertificateFilePath(),
-                        serviceConfig.getTlsKeyFilePath(),
-                        serviceConfig.isTlsAllowInsecureConnection(),
-                        serviceConfig.isTlsRequireTrustedClientCertOnConnect(),
-                        null,
-                        serviceConfig.isTlsEnabledWithKeyStore());
-            } else {
-                this.sslFactory.configure(serviceConfig.getTlsProvider(),
-                        serviceConfig.getTlsCiphers(),
-                        serviceConfig.getTlsProtocols(),
-                        serviceConfig.isTlsAllowInsecureConnection(),
-                        serviceConfig.isTlsRequireTrustedClientCertOnConnect(),
-                        null,
-                        serviceConfig.getSslFactoryPluginParams());
-            }
+//            if (this.sslFactory instanceof DefaultSslFactory) {
+//                ((DefaultSslFactory) this.sslFactory).configure(serviceConfig.getTlsProvider(),
+//                        serviceConfig.getTlsKeyStoreType(),
+//                        serviceConfig.getTlsKeyStore(),
+//                        serviceConfig.getTlsKeyStorePassword(),
+//                        serviceConfig.getTlsTrustStoreType(),
+//                        serviceConfig.getTlsTrustStore(),
+//                        serviceConfig.getTlsTrustStorePassword(),
+//                        serviceConfig.getTlsCiphers(),
+//                        serviceConfig.getTlsProtocols(),
+//                        serviceConfig.getTlsTrustCertsFilePath(),
+//                        serviceConfig.getTlsCertificateFilePath(),
+//                        serviceConfig.getTlsKeyFilePath(),
+//                        serviceConfig.isTlsAllowInsecureConnection(),
+//                        serviceConfig.isTlsRequireTrustedClientCertOnConnect(),
+//                        null,
+//                        serviceConfig.isTlsEnabledWithKeyStore());
+//            } else {
+//                this.sslFactory.configure(serviceConfig.getTlsProvider(),
+//                        serviceConfig.getTlsCiphers(),
+//                        serviceConfig.getTlsProtocols(),
+//                        serviceConfig.isTlsAllowInsecureConnection(),
+//                        serviceConfig.isTlsRequireTrustedClientCertOnConnect(),
+//                        null,
+//                        serviceConfig.getSslFactoryPluginParams());
+//            }
 //            if (tlsEnabledWithKeyStore) {
 //                serverSSLContextAutoRefreshBuilder = new NettySSLContextAutoRefreshBuilder(
 //                        serviceConfig.getTlsProvider(),
@@ -115,10 +132,11 @@ public class ServiceChannelInitializer extends ChannelInitializer<SocketChannel>
 //                        serviceConfig.isTlsRequireTrustedClientCertOnConnect(),
 //                        serviceConfig.getTlsCertRefreshCheckDurationSec());
 //            }
-        } else {
-//            this.serverSslCtxRefresher = null;
-            this.sslFactory = null;
         }
+//        } else {
+//            this.serverSslCtxRefresher = null;
+//            this.sslFactory = null;
+//        }
     }
 
     @Override
@@ -135,7 +153,7 @@ public class ServiceChannelInitializer extends ChannelInitializer<SocketChannel>
 //                    new SslHandler(serverSSLContextAutoRefreshBuilder.get().createSSLEngine()));
 //        }
         if (this.enableTls) {
-            ch.pipeline().addLast(TLS_HANDLER, new SslHandler(this.sslFactory.getServerSslEngine()));
+            ch.pipeline().addLast(TLS_HANDLER, new SslHandler(this.sslFactory.createServerSslEngine()));
         }
         if (brokerProxyReadTimeoutMs > 0) {
             ch.pipeline().addLast("readTimeoutHandler",
@@ -148,5 +166,36 @@ public class ServiceChannelInitializer extends ChannelInitializer<SocketChannel>
                 this.maxMessageSize + Commands.MESSAGE_SIZE_FRAME_PADDING, 0, 4, 0, 4));
 
         ch.pipeline().addLast("handler", new ProxyConnection(proxyService, proxyService.getDnsAddressResolverGroup()));
+    }
+
+    protected PulsarSslConfiguration buildSslConfiguration(ProxyConfiguration config) {
+        return PulsarSslConfiguration.builder()
+                .tlsProvider(config.getBrokerClientSslProvider())
+                .tlsKeyStoreType(config.getBrokerClientTlsKeyStoreType())
+                .tlsKeyStorePath(config.getBrokerClientTlsKeyStore())
+                .tlsKeyStorePassword(config.getBrokerClientTlsKeyStorePassword())
+                .tlsTrustStoreType(config.getBrokerClientTlsTrustStoreType())
+                .tlsTrustStorePath(config.getBrokerClientTlsTrustStore())
+                .tlsTrustStorePassword(config.getBrokerClientTlsTrustStorePassword())
+                .tlsCiphers(config.getBrokerClientTlsCiphers())
+                .tlsProtocols(config.getBrokerClientTlsProtocols())
+                .tlsTrustCertsFilePath(config.getBrokerClientTrustCertsFilePath())
+                .tlsCertificateFilePath(config.getBrokerClientCertificateFilePath())
+                .tlsKeyFilePath(config.getBrokerClientKeyFilePath())
+                .allowInsecureConnection(config.isTlsAllowInsecureConnection())
+                .requireTrustedClientCertOnConnect(false)
+                .tlsEnabledWithKeystore(config.isBrokerClientTlsEnabledWithKeyStore())
+                .tlsCustomParams(config.getBrokerClientSslFactoryPluginParams())
+                .authData(null)
+                .serverMode(true)
+                .build();
+    }
+
+    protected void refreshSslContext() {
+        try {
+            this.sslFactory.update();
+        } catch (Exception e) {
+            log.error("Failed to refresh SSL context", e);
+        }
     }
 }
