@@ -19,10 +19,7 @@
 package org.apache.pulsar.common.util;
 
 import java.io.IOException;
-import java.io.InputStream;
 import java.security.GeneralSecurityException;
-import java.security.PrivateKey;
-import java.security.cert.Certificate;
 import java.util.concurrent.atomic.AtomicReference;
 import javax.net.ssl.SSLContext;
 import javax.net.ssl.SSLEngine;

@@ -661,7 +661,7 @@ public interface ClientBuilder extends Serializable, Cloneable {
     ClientBuilder sslFactoryPluginParams(String sslFactoryPluginParams);
 
     /**
-     * Set Cert Refresh interval in seconds
+     * Set Cert Refresh interval in seconds.
      * @param autoCertRefreshSeconds
      * @return the client builder instance
      */
