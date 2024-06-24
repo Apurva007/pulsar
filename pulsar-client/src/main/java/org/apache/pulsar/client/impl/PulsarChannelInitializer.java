@@ -78,14 +78,20 @@ public class PulsarChannelInitializer extends ChannelInitializer<SocketChannel> 
         this.tlsEnabledWithKeyStore = conf.isUseKeyStoreTls();
 
         if (tlsEnabled) {
-            PulsarSslConfiguration sslConfiguration = buildSslConfiguration(conf);
             this.pulsarSslFactory = (PulsarSslFactory) Class.forName(conf.getSslFactoryPlugin())
                     .getConstructor().newInstance();
-            this.pulsarSslFactory.initialize(sslConfiguration);
-            this.pulsarSslFactory.createInternalSslContext();
+            try {
+                PulsarSslConfiguration sslConfiguration = buildSslConfiguration(conf);
+                this.pulsarSslFactory.initialize(sslConfiguration);
+                this.pulsarSslFactory.createInternalSslContext();
+            } catch (Exception e) {
+                log.error("Unable to initialize and create the ssl context", e);
+            }
             if (scheduledExecutorProvider != null) {
                 ((ScheduledExecutorService) scheduledExecutorProvider.getExecutor())
-                        .scheduleWithFixedDelay(this::refreshSslContext, conf.getAutoCertRefreshSeconds(),
+                        .scheduleWithFixedDelay(() -> {
+                            this.refreshSslContext(conf);
+                                }, conf.getAutoCertRefreshSeconds(),
                                 conf.getAutoCertRefreshSeconds(), TimeUnit.SECONDS);
             }
 //            this.pulsarSslFactoryTemp = (PulsarSslFactoryTemp) Class.forName(conf.getSslFactoryPlugin())
@@ -301,8 +307,15 @@ public class PulsarChannelInitializer extends ChannelInitializer<SocketChannel> 
                 .build();
     }
 
-    protected void refreshSslContext() {
+    protected void refreshSslContext(ClientConfigurationData conf) {
         try {
+            try {
+                this.pulsarSslFactory.getInternalSslContext();
+            } catch (Exception e) {
+                log.error("SSL Context is not initialized", e);
+                PulsarSslConfiguration sslConfiguration = buildSslConfiguration(conf);
+                this.pulsarSslFactory.initialize(sslConfiguration);
+            }
             this.pulsarSslFactory.update();
         } catch (Exception e) {
             log.error("Failed to refresh SSL context", e);
