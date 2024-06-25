@@ -107,6 +107,7 @@ public class CompactorToolTest {
         serviceConfiguration.setBrokerClientTlsEnabled(true);
         serviceConfiguration.setBrokerClientTlsEnabledWithKeyStore(true);
         serviceConfiguration.setBrokerClientTlsTrustStore(MockedPulsarServiceBaseTest.BROKER_KEYSTORE_FILE_PATH);
+        serviceConfiguration.setBrokerClientTlsTrustStorePassword(MockedPulsarServiceBaseTest.BROKER_KEYSTORE_PW);
 
         serviceConfiguration.setProperties(new Properties());
 

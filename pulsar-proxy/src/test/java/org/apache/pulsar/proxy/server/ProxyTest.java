@@ -382,7 +382,7 @@ public class ProxyTest extends MockedPulsarServiceBaseTest {
                     throw new UnsupportedOperationException();
                 }
             };
-        });
+        }, null);
         registerCloseable(cnxPool);
 
         return new PulsarClientImpl(conf, eventLoopGroup, cnxPool);
