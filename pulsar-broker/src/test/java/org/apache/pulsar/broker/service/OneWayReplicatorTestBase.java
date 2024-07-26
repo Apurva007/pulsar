@@ -23,6 +23,7 @@ import static org.testng.Assert.assertFalse;
 import static org.testng.Assert.assertTrue;
 import static org.testng.Assert.assertEquals;
 import com.google.common.collect.Sets;
+import com.google.common.io.Resources;
 import java.net.URL;
 import java.time.Duration;
 import java.util.Arrays;
@@ -62,6 +63,12 @@ public abstract class OneWayReplicatorTestBase extends TestRetrySupport {
     protected final String defaultTenant = "public";
     protected final String replicatedNamespace = defaultTenant + "/default";
     protected final String nonReplicatedNamespace = defaultTenant + "/ns1";
+    final static String caCertPath = Resources.getResource("certificate-authority/certs/ca.cert.pem")
+            .getPath();
+    final static String brokerCertPath =
+            Resources.getResource("certificate-authority/server-keys/broker.cert.pem").getPath();
+    final static String brokerKeyPath =
+            Resources.getResource("certificate-authority/server-keys/broker.key-pk8.pem").getPath();
 
     protected final String cluster1 = "r1";
 
@@ -267,6 +274,9 @@ public abstract class OneWayReplicatorTestBase extends TestRetrySupport {
         config.setReplicatedSubscriptionsSnapshotFrequencyMillis(1000);
         config.setLoadBalancerSheddingEnabled(false);
         config.setForceDeleteNamespaceAllowed(true);
+        config.setTlsTrustCertsFilePath(caCertPath);
+        config.setTlsCertificateFilePath(brokerCertPath);
+        config.setTlsKeyFilePath(brokerKeyPath);
     }
 
     @Override

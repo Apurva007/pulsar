@@ -24,7 +24,6 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.net.URI;
 import java.nio.ByteBuffer;
-import java.security.cert.X509Certificate;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashSet;
@@ -32,6 +31,9 @@ import java.util.Iterator;
 import java.util.Objects;
 import java.util.Set;
 import java.util.concurrent.Executor;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.TimeUnit;
 import javax.net.ssl.SSLContext;
 import javax.servlet.ServletConfig;
 import javax.servlet.ServletException;
@@ -41,10 +43,10 @@ import org.apache.pulsar.broker.web.AuthenticationFilter;
 import org.apache.pulsar.client.api.Authentication;
 import org.apache.pulsar.client.api.AuthenticationDataProvider;
 import org.apache.pulsar.client.api.AuthenticationFactory;
-import org.apache.pulsar.client.api.KeyStoreParams;
 import org.apache.pulsar.client.api.PulsarClientException;
-import org.apache.pulsar.common.util.SecurityUtility;
-import org.apache.pulsar.common.util.keystoretls.KeyStoreSSLContext;
+import org.apache.pulsar.client.util.ExecutorProvider;
+import org.apache.pulsar.common.util.PulsarSslConfiguration;
+import org.apache.pulsar.common.util.PulsarSslFactory;
 import org.apache.pulsar.policies.data.loadbalancer.ServiceLookupData;
 import org.eclipse.jetty.client.HttpClient;
 import org.eclipse.jetty.client.HttpRequest;
@@ -89,6 +91,8 @@ class AdminProxyHandler extends ProxyServlet {
     private final BrokerDiscoveryProvider discoveryProvider;
     private final String brokerWebServiceUrl;
     private final String functionWorkerWebServiceUrl;
+    private PulsarSslFactory pulsarSslFactory;
+    private ScheduledExecutorService scheduledExecutorService;
 
     AdminProxyHandler(ProxyConfiguration config, BrokerDiscoveryProvider discoveryProvider) {
         this.config = config;
@@ -97,7 +101,14 @@ class AdminProxyHandler extends ProxyServlet {
                 : config.getBrokerWebServiceURL();
         this.functionWorkerWebServiceUrl = config.isTlsEnabledWithBroker() ? config.getFunctionWorkerWebServiceURLTLS()
                 : config.getFunctionWorkerWebServiceURL();
-
+        if (config.isBrokerClientTlsEnabledWithKeyStore()) {
+            this.pulsarSslFactory = createPulsarSslFactory();
+            this.scheduledExecutorService = Executors.newSingleThreadScheduledExecutor(
+                    new ExecutorProvider.ExtendedThreadFactory("pulsar-proxy-admin-handler-ssl-refresh"));
+            this.scheduledExecutorService.scheduleWithFixedDelay(this::refreshSslContext,
+                    config.getTlsCertRefreshCheckDurationSec(), config.getTlsCertRefreshCheckDurationSec(),
+                    TimeUnit.SECONDS);
+        }
         super.setTimeout(config.getHttpProxyTimeout());
     }
 
@@ -256,66 +267,17 @@ class AdminProxyHandler extends ProxyServlet {
     @Override
     protected HttpClient newHttpClient() {
         try {
-            Authentication auth = AuthenticationFactory.create(
-                config.getBrokerClientAuthenticationPlugin(),
-                config.getBrokerClientAuthenticationParameters()
-            );
 
-            Objects.requireNonNull(auth, "No supported auth found for proxy");
-
-            auth.start();
 
             if (config.isTlsEnabledWithBroker()) {
                 try {
-                    X509Certificate[] trustCertificates = SecurityUtility
-                        .loadCertificatesFromPemFile(config.getBrokerClientTrustCertsFilePath());
-
-                    SSLContext sslCtx;
-                    AuthenticationDataProvider authData = auth.getAuthData();
-                    if (config.isBrokerClientTlsEnabledWithKeyStore()) {
-                        KeyStoreParams params = authData.hasDataForTls() ? authData.getTlsKeyStoreParams() : null;
-                        sslCtx = KeyStoreSSLContext.createClientSslContext(
-                                config.getBrokerClientSslProvider(),
-                                params != null ? params.getKeyStoreType() : null,
-                                params != null ? params.getKeyStorePath() : null,
-                                params != null ? params.getKeyStorePassword() : null,
-                                config.isTlsAllowInsecureConnection(),
-                                config.getBrokerClientTlsTrustStoreType(),
-                                config.getBrokerClientTlsTrustStore(),
-                                config.getBrokerClientTlsTrustStorePassword(),
-                                config.getBrokerClientTlsCiphers(),
-                                config.getBrokerClientTlsProtocols());
-                    } else {
-                        if (authData.hasDataForTls()) {
-                            sslCtx = SecurityUtility.createSslContext(
-                                    config.isTlsAllowInsecureConnection(),
-                                    trustCertificates,
-                                    authData.getTlsCertificates(),
-                                    authData.getTlsPrivateKey(),
-                                    config.getBrokerClientSslProvider()
-                            );
-                        } else {
-                            sslCtx = SecurityUtility.createSslContext(
-                                    config.isTlsAllowInsecureConnection(),
-                                    trustCertificates,
-                                    config.getBrokerClientSslProvider()
-                            );
-                        }
-                    }
-
-                    SslContextFactory contextFactory = new SslContextFactory.Client();
-                    contextFactory.setSslContext(sslCtx);
+                    SslContextFactory contextFactory = new Client(this.pulsarSslFactory);
                     if (!config.isTlsHostnameVerificationEnabled()) {
                         contextFactory.setEndpointIdentificationAlgorithm(null);
                     }
                     return new JettyHttpClient(contextFactory);
                 } catch (Exception e) {
                     LOG.error("new jetty http client exception ", e);
-                    try {
-                        auth.close();
-                    } catch (IOException ioe) {
-                        LOG.error("Failed to close the authentication service", ioe);
-                    }
                     throw new PulsarClientException.InvalidConfigurationException(e.getMessage());
                 }
             }
@@ -390,6 +352,84 @@ class AdminProxyHandler extends ProxyServlet {
         String user = (String) clientRequest.getAttribute(AuthenticationFilter.AuthenticatedRoleAttributeName);
         if (user != null) {
             proxyRequest.header(ORIGINAL_PRINCIPAL_HEADER, user);
+        }
+    }
+
+    private static class Client extends SslContextFactory.Client {
+
+        private final PulsarSslFactory sslFactory;
+
+        public Client(PulsarSslFactory sslFactory) {
+            super();
+            this.sslFactory = sslFactory;
+        }
+
+        @Override
+        public SSLContext getSslContext() {
+            return this.sslFactory.getInternalSslContext();
+        }
+    }
+
+    protected PulsarSslConfiguration buildSslConfiguration(AuthenticationDataProvider authData) {
+        return PulsarSslConfiguration.builder()
+                .tlsProvider(config.getBrokerClientSslProvider())
+                .tlsKeyStoreType(config.getBrokerClientTlsKeyStoreType())
+                .tlsKeyStorePath(config.getBrokerClientTlsKeyStore())
+                .tlsKeyStorePassword(config.getBrokerClientTlsKeyStorePassword())
+                .tlsTrustStoreType(config.getBrokerClientTlsTrustStoreType())
+                .tlsTrustStorePath(config.getBrokerClientTlsTrustStore())
+                .tlsTrustStorePassword(config.getBrokerClientTlsTrustStorePassword())
+                .tlsCiphers(config.getBrokerClientTlsCiphers())
+                .tlsProtocols(config.getBrokerClientTlsProtocols())
+                .tlsTrustCertsFilePath(config.getBrokerClientTrustCertsFilePath())
+                .tlsCertificateFilePath(config.getBrokerClientCertificateFilePath())
+                .tlsKeyFilePath(config.getBrokerClientKeyFilePath())
+                .allowInsecureConnection(config.isTlsAllowInsecureConnection())
+                .requireTrustedClientCertOnConnect(false)
+                .tlsEnabledWithKeystore(config.isBrokerClientTlsEnabledWithKeyStore())
+                .tlsCustomParams(config.getBrokerClientSslFactoryPluginParams())
+                .authData(authData)
+                .serverMode(false)
+                .isHttps(true)
+                .build();
+    }
+
+    protected PulsarSslFactory createPulsarSslFactory() {
+        try {
+            Authentication auth = AuthenticationFactory.create(
+                    config.getBrokerClientAuthenticationPlugin(),
+                    config.getBrokerClientAuthenticationParameters()
+            );
+            Objects.requireNonNull(auth, "No supported auth found for proxy");
+            auth.start();
+            try {
+                AuthenticationDataProvider authData = auth.getAuthData();
+                PulsarSslConfiguration pulsarSslConfiguration = buildSslConfiguration(authData);
+                PulsarSslFactory sslFactory =
+                        (PulsarSslFactory) Class.forName(config.getBrokerClientSslFactoryPlugin())
+                                .getConstructor().newInstance();
+                sslFactory.initialize(pulsarSslConfiguration);
+                sslFactory.createInternalSslContext();
+                return sslFactory;
+            } catch (Exception e) {
+                try {
+                    LOG.error("Failed to create Pulsar SSLFactory ", e);
+                    auth.close();
+                } catch (IOException ioe) {
+                    LOG.error("Failed to close the authentication service", ioe);
+                }
+                throw new PulsarClientException.InvalidConfigurationException(e.getMessage());
+            }
+        } catch (Exception e) {
+            throw new RuntimeException(e);
+        }
+    }
+
+    protected void refreshSslContext() {
+        try {
+            this.pulsarSslFactory.update();
+        } catch (Exception e) {
+            LOG.error("Failed to refresh SSL context", e);
         }
     }
 }
