@@ -36,6 +36,7 @@ import org.apache.pulsar.broker.auth.MockedPulsarServiceBaseTest;
 import org.apache.pulsar.client.api.PulsarClient;
 import org.apache.pulsar.client.impl.conf.ClientConfigurationData;
 import org.apache.pulsar.client.impl.metrics.InstrumentProvider;
+import org.apache.pulsar.client.util.ScheduledExecutorProvider;
 import org.apache.pulsar.common.api.proto.CommandCloseProducer;
 import org.apache.pulsar.common.util.netty.EventLoopUtil;
 import org.awaitility.Awaitility;
@@ -69,8 +70,11 @@ public class ConnectionPoolTest extends MockedPulsarServiceBaseTest {
     public void testSingleIpAddress() throws Exception {
         ClientConfigurationData conf = new ClientConfigurationData();
         EventLoopGroup eventLoop = EventLoopUtil.newEventLoopGroup(1, false, new DefaultThreadFactory("test"));
+        ScheduledExecutorProvider executorProvider = new ScheduledExecutorProvider(conf.getNumIoThreads(),
+                "test-pulsar-client-scheduled");
         ConnectionPool pool =
-                spyWithClassAndConstructorArgs(ConnectionPool.class, InstrumentProvider.NOOP, conf, eventLoop);
+                spyWithClassAndConstructorArgs(ConnectionPool.class, InstrumentProvider.NOOP, conf, eventLoop,
+                        executorProvider);
         conf.setServiceUrl(serviceUrl);
         PulsarClientImpl client = new PulsarClientImpl(conf, eventLoop, pool);
 
@@ -84,6 +88,7 @@ public class ConnectionPoolTest extends MockedPulsarServiceBaseTest {
 
         client.close();
         eventLoop.shutdownGracefully();
+        executorProvider.shutdownNow();
     }
 
     @Test
@@ -119,8 +124,11 @@ public class ConnectionPoolTest extends MockedPulsarServiceBaseTest {
     @Test
     public void testDoubleIpAddress() throws Exception {
         ClientConfigurationData conf = new ClientConfigurationData();
+        ScheduledExecutorProvider executorProvider = new ScheduledExecutorProvider(conf.getNumIoThreads(),
+                "test-pulsar-client-scheduled");
         EventLoopGroup eventLoop = EventLoopUtil.newEventLoopGroup(1, false, new DefaultThreadFactory("test"));
-        ConnectionPool pool = spyWithClassAndConstructorArgs(ConnectionPool.class, InstrumentProvider.NOOP, conf, eventLoop);
+        ConnectionPool pool = spyWithClassAndConstructorArgs(ConnectionPool.class, InstrumentProvider.NOOP, conf,
+                eventLoop, executorProvider);
         conf.setServiceUrl(serviceUrl);
         PulsarClientImpl client = new PulsarClientImpl(conf, eventLoop, pool);
 
@@ -138,6 +146,7 @@ public class ConnectionPoolTest extends MockedPulsarServiceBaseTest {
         client.close();
 
         eventLoop.shutdownGracefully();
+        executorProvider.shutdownNow();
     }
 
     @Test
@@ -145,8 +154,11 @@ public class ConnectionPoolTest extends MockedPulsarServiceBaseTest {
         ClientConfigurationData conf = new ClientConfigurationData();
         conf.setConnectionsPerBroker(0);
         EventLoopGroup eventLoop = EventLoopUtil.newEventLoopGroup(8, false, new DefaultThreadFactory("test"));
+        ScheduledExecutorProvider executorProvider = new ScheduledExecutorProvider(conf.getNumIoThreads(),
+                "test-pulsar-client-scheduled");
         ConnectionPool pool =
-                spyWithClassAndConstructorArgs(ConnectionPool.class, InstrumentProvider.NOOP, conf, eventLoop);
+                spyWithClassAndConstructorArgs(ConnectionPool.class, InstrumentProvider.NOOP, conf, eventLoop,
+                        executorProvider);
 
         InetSocketAddress brokerAddress =
                 InetSocketAddress.createUnresolved("127.0.0.1", brokerPort);
@@ -162,6 +174,7 @@ public class ConnectionPoolTest extends MockedPulsarServiceBaseTest {
         pool.closeAllConnections();
         pool.close();
         eventLoop.shutdownGracefully();
+        executorProvider.shutdownNow();
     }
 
     @Test
@@ -169,8 +182,11 @@ public class ConnectionPoolTest extends MockedPulsarServiceBaseTest {
         ClientConfigurationData conf = new ClientConfigurationData();
         conf.setConnectionsPerBroker(5);
         EventLoopGroup eventLoop = EventLoopUtil.newEventLoopGroup(8, false, new DefaultThreadFactory("test"));
+        ScheduledExecutorProvider executorProvider = new ScheduledExecutorProvider(conf.getNumIoThreads(),
+                "test-pulsar-client-scheduled");
         ConnectionPool pool =
-                spyWithClassAndConstructorArgs(ConnectionPool.class, InstrumentProvider.NOOP, conf, eventLoop);
+                spyWithClassAndConstructorArgs(ConnectionPool.class, InstrumentProvider.NOOP, conf, eventLoop,
+                        executorProvider);
 
         InetSocketAddress brokerAddress =
                 InetSocketAddress.createUnresolved("127.0.0.1", brokerPort);
@@ -186,6 +202,7 @@ public class ConnectionPoolTest extends MockedPulsarServiceBaseTest {
         pool.closeAllConnections();
         pool.close();
         eventLoop.shutdownGracefully();
+        executorProvider.shutdownNow();
     }
 
 
@@ -193,7 +210,8 @@ public class ConnectionPoolTest extends MockedPulsarServiceBaseTest {
     public void testSetProxyToTargetBrokerAddress() throws Exception {
         ClientConfigurationData conf = new ClientConfigurationData();
         conf.setConnectionsPerBroker(1);
-
+        ScheduledExecutorProvider executorProvider = new ScheduledExecutorProvider(conf.getNumIoThreads(),
+                "test-pulsar-client-scheduled");
 
         EventLoopGroup eventLoop =
                 EventLoopUtil.newEventLoopGroup(8, false,
@@ -240,7 +258,7 @@ public class ConnectionPoolTest extends MockedPulsarServiceBaseTest {
         ConnectionPool pool =
                 spyWithClassAndConstructorArgs(ConnectionPool.class, InstrumentProvider.NOOP, conf, eventLoop,
                         (Supplier<ClientCnx>) () -> new ClientCnx(InstrumentProvider.NOOP, conf, eventLoop),
-                        Optional.of(resolver));
+                        Optional.of(resolver), executorProvider);
 
 
         ClientCnx cnx = pool.getConnection(
@@ -268,5 +286,6 @@ public class ConnectionPoolTest extends MockedPulsarServiceBaseTest {
         pool.closeAllConnections();
         pool.close();
         eventLoop.shutdownGracefully();
+        executorProvider.shutdownNow();
     }
 }
