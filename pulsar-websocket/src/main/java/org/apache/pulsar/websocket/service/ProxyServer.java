@@ -257,6 +257,7 @@ public class ProxyServer {
                 .requireTrustedClientCertOnConnect(config.isTlsRequireTrustedClientCertOnConnect())
                 .tlsEnabledWithKeystore(config.isTlsEnabledWithKeyStore())
                 .serverMode(true)
+                .isHttps(true)
                 .build();
     }
 

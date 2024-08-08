@@ -345,6 +345,7 @@ public class AsyncHttpConnector implements Connector {
                 .authData(conf.getAuthentication().getAuthData())
                 .tlsCustomParams(conf.getSslFactoryPluginParams())
                 .serverMode(false)
+                .isHttps(true)
                 .build();
     }
 

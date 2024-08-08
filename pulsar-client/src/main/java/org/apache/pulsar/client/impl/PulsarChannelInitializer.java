@@ -124,7 +124,7 @@ public class PulsarChannelInitializer extends ChannelInitializer<SocketChannel> 
         ch.eventLoop().execute(() -> {
             try {
                 SslHandler handler = new SslHandler(pulsarSslFactory
-                        .createClientSslEngine(sniHost.getHostName(), sniHost.getPort()));
+                        .createClientSslEngine(ch.alloc(), sniHost.getHostName(), sniHost.getPort()));
 
                 if (tlsHostnameVerificationEnabled) {
                     SecurityUtility.configureSSLHandler(handler);
@@ -208,7 +208,11 @@ public class PulsarChannelInitializer extends ChannelInitializer<SocketChannel> 
     protected void refreshSslContext(ClientConfigurationData conf) {
         try {
             try {
-                this.pulsarSslFactory.getInternalSslContext();
+                if (conf.isUseKeyStoreTls()) {
+                    this.pulsarSslFactory.getInternalSslContext();
+                } else {
+                    this.pulsarSslFactory.getInternalNettySslContext();
+                }
             } catch (Exception e) {
                 log.error("SSL Context is not initialized", e);
                 PulsarSslConfiguration sslConfiguration = buildSslConfiguration(conf);

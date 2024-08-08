@@ -82,7 +82,7 @@ public class PulsarChannelInitializer extends ChannelInitializer<SocketChannel> 
         ch.config().setAutoRead(false);
         ch.pipeline().addLast("consolidation", new FlushConsolidationHandler(1024, true));
         if (this.enableTls) {
-            ch.pipeline().addLast(TLS_HANDLER, new SslHandler(this.sslFactory.createServerSslEngine()));
+            ch.pipeline().addLast(TLS_HANDLER, new SslHandler(this.sslFactory.createServerSslEngine(ch.alloc())));
             ch.pipeline().addLast("ByteBufPairEncoder", ByteBufPair.COPYING_ENCODER);
         } else {
             ch.pipeline().addLast("ByteBufPairEncoder", ByteBufPair.ENCODER);

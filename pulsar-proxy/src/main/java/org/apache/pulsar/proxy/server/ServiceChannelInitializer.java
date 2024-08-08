@@ -80,7 +80,7 @@ public class ServiceChannelInitializer extends ChannelInitializer<SocketChannel>
         ch.pipeline().addLast("consolidation", new FlushConsolidationHandler(1024,
                 true));
         if (this.enableTls) {
-            ch.pipeline().addLast(TLS_HANDLER, new SslHandler(this.sslFactory.createServerSslEngine()));
+            ch.pipeline().addLast(TLS_HANDLER, new SslHandler(this.sslFactory.createServerSslEngine(ch.alloc())));
         }
         if (brokerProxyReadTimeoutMs > 0) {
             ch.pipeline().addLast("readTimeoutHandler",

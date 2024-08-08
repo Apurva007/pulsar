@@ -330,6 +330,7 @@ public class WorkerServer {
                 .requireTrustedClientCertOnConnect(config.isTlsRequireTrustedClientCertOnConnect())
                 .tlsEnabledWithKeystore(config.isTlsEnabledWithKeyStore())
                 .serverMode(true)
+                .isHttps(true)
                 .build();
     }
 }

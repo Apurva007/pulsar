@@ -250,6 +250,7 @@ public class HttpClient implements Closeable {
                 .tlsCustomParams(config.getSslFactoryPluginParams())
                 .authData(config.getAuthentication().getAuthData())
                 .serverMode(false)
+                .isHttps(true)
                 .build();
     }
 

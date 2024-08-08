@@ -465,6 +465,7 @@ public class WebService implements AutoCloseable {
                 .tlsEnabledWithKeystore(serviceConfig.isTlsEnabledWithKeyStore())
                 .tlsCustomParams(serviceConfig.getSslFactoryPluginParams())
                 .serverMode(true)
+                .isHttps(true)
                 .build();
     }
 

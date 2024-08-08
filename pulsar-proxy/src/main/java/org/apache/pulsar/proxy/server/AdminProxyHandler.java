@@ -390,6 +390,7 @@ class AdminProxyHandler extends ProxyServlet {
                 .tlsCustomParams(config.getBrokerClientSslFactoryPluginParams())
                 .authData(authData)
                 .serverMode(false)
+                .isHttps(true)
                 .build();
     }
 

@@ -87,7 +87,6 @@ public class DirectProxyHandler {
     private final ProxyService service;
     private final Runnable onHandshakeCompleteAction;
     private final boolean tlsHostnameVerificationEnabled;
-    private final boolean tlsEnabledWithKeyStore;
     final boolean tlsEnabledWithBroker;
     private PulsarSslFactory sslFactory;
 
@@ -103,7 +102,6 @@ public class DirectProxyHandler {
         this.clientAuthMethod = proxyConnection.clientAuthMethod;
         this.tlsEnabledWithBroker = service.getConfiguration().isTlsEnabledWithBroker();
         this.tlsHostnameVerificationEnabled = service.getConfiguration().isTlsHostnameVerificationEnabled();
-        this.tlsEnabledWithKeyStore = service.getConfiguration().isTlsEnabledWithKeyStore();
         this.onHandshakeCompleteAction = proxyConnection::cancelKeepAliveTask;
         ProxyConfiguration config = service.getConfiguration();
 
@@ -163,7 +161,7 @@ public class DirectProxyHandler {
                 if (tlsEnabledWithBroker) {
                     String host = targetBrokerAddress.getHostString();
                     int port = targetBrokerAddress.getPort();
-                    SslHandler handler = new SslHandler(sslFactory.createClientSslEngine(host, port));
+                    SslHandler handler = new SslHandler(sslFactory.createClientSslEngine(ch.alloc(), host, port));
                     if (tlsHostnameVerificationEnabled) {
                         SecurityUtility.configureSSLHandler(handler);
                     }

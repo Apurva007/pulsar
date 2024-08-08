@@ -149,6 +149,12 @@ public class PulsarSslConfiguration implements Serializable, Cloneable {
     )
     private boolean serverMode;
 
+    @ApiModelProperty(
+            name = "isHttps",
+            value = "Is the SSL Configuration for a Http client or Server"
+    )
+    private boolean isHttps;
+
     @Override
     public PulsarSslConfiguration clone() {
         try {

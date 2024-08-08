@@ -403,6 +403,7 @@ public class WebServer {
                 .tlsCustomParams(config.getBrokerClientSslFactoryPluginParams())
                 .authData(null)
                 .serverMode(true)
+                .isHttps(true)
                 .build();
     }
 
