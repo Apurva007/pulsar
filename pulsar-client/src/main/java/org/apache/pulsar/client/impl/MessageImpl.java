@@ -49,6 +49,7 @@ import org.apache.pulsar.client.impl.schema.KeyValueSchemaImpl;
 import org.apache.pulsar.common.api.EncryptionContext;
 import org.apache.pulsar.common.api.proto.BrokerEntryMetadata;
 import org.apache.pulsar.common.api.proto.KeyValue;
+import org.apache.pulsar.common.api.proto.MessageIdData;
 import org.apache.pulsar.common.api.proto.MessageMetadata;
 import org.apache.pulsar.common.api.proto.SingleMessageMetadata;
 import org.apache.pulsar.common.protocol.Commands;
@@ -61,6 +62,7 @@ import org.apache.pulsar.common.schema.SchemaType;
 public class MessageImpl<T> implements Message<T> {
 
     protected MessageId messageId;
+    protected MessageId replicatedMessageId;
     private final MessageMetadata msgMetadata;
     private ClientCnx cnx;
     private ByteBuf payload;
@@ -182,6 +184,24 @@ public class MessageImpl<T> implements Message<T> {
         msg.msgMetadata.clear();
         msg.msgMetadata.copyFrom(msgMetadata);
         msg.messageId = batchMessageIdImpl;
+        if (msg.msgMetadata.hasReplicatedMessageId()) {
+            MessageIdData messageIdData = msg.msgMetadata.getReplicatedMessageId();
+            if (msg.messageId == null) {
+                msg.replicatedMessageId = new MessageIdImpl(messageIdData.getLedgerId(),
+                        messageIdData.getEntryId(),
+                        messageIdData.getPartition());
+            } else {
+                int batchSize = -1;
+                if (messageIdData.hasBatchSize()) {
+                    batchSize = messageIdData.getBatchSize();
+                }
+                msg.replicatedMessageId = new BatchMessageIdImpl(messageIdData.getLedgerId(),
+                        messageIdData.getEntryId(),
+                        messageIdData.getPartition(),
+                        ((BatchMessageIdImpl) msg.messageId).getBatchIndex(),
+                        batchSize, null);
+            }
+        }
         msg.topic = topic;
         msg.cnx = cnx;
         msg.redeliveryCount = redeliveryCount;
@@ -756,6 +776,11 @@ public class MessageImpl<T> implements Message<T> {
 
     public List<String> getReplicateTo() {
         return msgMetadata.getReplicateTosList();
+    }
+
+    @Override
+    public MessageId getReplicatedMessageId() {
+        return replicatedMessageId;
     }
 
     public boolean hasReplicateFrom() {

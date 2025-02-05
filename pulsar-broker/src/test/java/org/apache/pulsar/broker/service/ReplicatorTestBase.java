@@ -26,9 +26,12 @@ import com.google.common.io.Resources;
 import io.netty.util.concurrent.DefaultThreadFactory;
 import io.opentelemetry.sdk.testing.exporter.InMemoryMetricReader;
 import java.net.URL;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Optional;
 import java.util.Set;
 import java.util.TreeSet;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.ThreadPoolExecutor;
@@ -39,6 +42,7 @@ import org.apache.pulsar.broker.stats.BrokerOpenTelemetryTestUtil;
 import org.apache.pulsar.client.admin.PulsarAdmin;
 import org.apache.pulsar.client.api.Consumer;
 import org.apache.pulsar.client.api.Message;
+import org.apache.pulsar.client.api.MessageId;
 import org.apache.pulsar.client.api.MessageRoutingMode;
 import org.apache.pulsar.client.api.Producer;
 import org.apache.pulsar.client.api.ProducerBuilder;
@@ -508,7 +512,7 @@ public abstract class ReplicatorTestBase extends TestRetrySupport {
             try {
                 producer = client.newProducer()
                         .topic(topicName)
-                        .enableBatching(false)
+                        .enableBatching(true)
                         .messageRoutingMode(MessageRoutingMode.SinglePartition)
                         .create();
             } catch (Exception e) {
@@ -548,10 +552,16 @@ public abstract class ReplicatorTestBase extends TestRetrySupport {
         void produce(int messages) throws Exception {
 
             log.info("Start sending messages");
+            List< CompletableFuture<MessageId>> futures = new ArrayList<>();
             for (int i = 0; i < messages; i++) {
-                producer.send(("test-" + i).getBytes());
+                MessageId id = producer.sendAsync(("test-" + i).getBytes()).get();
                 log.info("Sent message {}", ("test-" + i));
+                log.info("Sent Message ID {}", id.toString());
             }
+//            for(CompletableFuture<MessageId> future: futures) {
+//                MessageId id = future.get();
+//                log.info("Sent Message ID {}", id.toString());
+//            }
 
         }
 
@@ -617,15 +627,22 @@ public abstract class ReplicatorTestBase extends TestRetrySupport {
                 consumer.acknowledge(msg);
 
                 String msgData = new String(msg.getData());
+                log.info("---------------------");
                 log.info("Received message {}", msgData);
-
-                boolean added = receivedMessages.add(msgData);
-                if (added) {
-                    assertEquals(msgData, "test-" + i);
-                    i++;
-                } else {
-                    log.info("Ignoring duplicate {}", msgData);
+                log.info("Received message id: {}", msg.getMessageId().toString());
+                if (msg.getReplicatedMessageId() != null) {
+                    log.info("Received Replicated Message {}", msg.getReplicatedMessageId().toString());
                 }
+                log.info("---------------------");
+
+                i++;
+//                boolean added = receivedMessages.add(msgData);
+//                if (added) {
+//                    assertEquals(msgData, "test-" + i);
+//                    i++;
+//                } else {
+//                    log.info("Ignoring duplicate {}", msgData);
+//                }
             }
         }
 

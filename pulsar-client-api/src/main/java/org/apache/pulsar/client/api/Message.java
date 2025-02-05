@@ -239,6 +239,12 @@ public interface Message<T> {
     String getReplicatedFrom();
 
     /**
+     * Get message id of the source cluster from which the message was replicated.
+     * @return message id of source cluster
+     */
+    MessageId getReplicatedMessageId();
+
+    /**
      * Release a message back to the pool. This is required only if the consumer was created with the option to pool
      * messages, otherwise it will have no effect.
      *

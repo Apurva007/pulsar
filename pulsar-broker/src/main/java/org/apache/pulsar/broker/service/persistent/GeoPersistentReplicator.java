@@ -30,6 +30,7 @@ import org.apache.pulsar.client.api.PulsarClientException;
 import org.apache.pulsar.client.api.transaction.TxnID;
 import org.apache.pulsar.client.impl.MessageImpl;
 import org.apache.pulsar.client.impl.PulsarClientImpl;
+import org.apache.pulsar.common.naming.TopicName;
 import org.apache.pulsar.common.protocol.Markers;
 import org.apache.pulsar.common.schema.SchemaInfo;
 import org.apache.pulsar.common.util.FutureUtil;
@@ -166,6 +167,11 @@ public class GeoPersistentReplicator extends PersistentReplicator {
 
                 dispatchRateLimiter.ifPresent(rateLimiter -> rateLimiter.consumeDispatchQuota(1, entry.getLength()));
                 msg.setReplicatedFrom(localCluster);
+                msg.getMessageBuilder().setReplicatedMessageId()
+                        .setEntryId(entry.getEntryId())
+                        .setLedgerId(entry.getLedgerId())
+                        .setPartition(TopicName.getPartitionIndex(topic.getName()));
+
 
                 headersAndPayload.retain();
 

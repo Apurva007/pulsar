@@ -179,6 +179,11 @@ public class TopicMessageImpl<T> implements Message<T> {
         return msg.getReplicatedFrom();
     }
 
+    @Override
+    public MessageId getReplicatedMessageId() {
+        return msg.getReplicatedMessageId();
+    }
+
     public Message<T> getMessage() {
         return msg;
     }

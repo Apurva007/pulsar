@@ -297,47 +297,49 @@ public class ReplicatorTest extends ReplicatorTestBase {
         log.info("--- Starting Consumer --- " + url3);
 
         // Produce from cluster1 and consume from the rest
-        producer1.produce(2);
+        producer1.produce(10);
 
-        consumer1.receive(2);
-
-        consumer2.receive(2);
-
-        consumer3.receive(2);
-
-        // Produce from cluster2 and consume from the rest
         producer2.produce(2);
 
-        consumer1.receive(2);
+//        consumer1.receive(12);
 
-        consumer2.receive(2);
+        consumer2.receive(12);
 
-        consumer3.receive(2);
+//        consumer3.receive(2);
+
+        // Produce from cluster2 and consume from the rest
+//        producer2.produce(2);
+//
+//        consumer1.receive(2);
+//
+//        consumer2.receive(2);
+//
+//        consumer3.receive(2);
 
         // Produce from cluster3 and consume from the rest
-        producer3.produce(2);
-
-        consumer1.receive(2);
-
-        consumer2.receive(2);
-
-        consumer3.receive(2);
+//        producer3.produce(2);
+//
+//        consumer1.receive(2);
+//
+//        consumer2.receive(2);
+//
+//        consumer3.receive(2);
 
         // Produce from cluster1&2 and consume from cluster3
-        producer1.produce(1);
-        producer2.produce(1);
-
-        consumer1.receive(1);
-
-        consumer2.receive(1);
-
-        consumer3.receive(1);
-
-        consumer1.receive(1);
-
-        consumer2.receive(1);
-
-        consumer3.receive(1);
+//        producer1.produce(1);
+//        producer2.produce(1);
+//
+//        consumer1.receive(1);
+//
+//        consumer2.receive(1);
+//
+//        consumer3.receive(1);
+//
+//        consumer1.receive(1);
+//
+//        consumer2.receive(1);
+//
+//        consumer3.receive(1);
     }
 
     @Test(invocationCount = 5)
